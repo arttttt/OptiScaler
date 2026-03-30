@@ -1,5 +1,6 @@
 #pragma once
 
+#include "d3d9.h"
 #include "d3d12.h"
 #include "dbghelp.h"
 #include "dxgi.h"

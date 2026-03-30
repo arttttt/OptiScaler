@@ -9,6 +9,7 @@
 #include <vulkan/vulkan.h>
 #include <ankerl/unordered_dense.h>
 #include <mutex>
+#include <d3d9.h>
 
 enum class FGPreset : uint32_t
 {
@@ -50,6 +51,7 @@ enum class WorkingMode : uint32_t
 {
     Dxgi,
     D3d12,
+    D3d9,
     Other,
 };
 
@@ -292,6 +294,11 @@ class State
 
     std::vector<ID3D12Device*> d3d12Devices;
     std::vector<ID3D11Device*> d3d11Devices;
+
+    // DX9
+    IDirect3DDevice9* currentD3D9Device = nullptr;
+    IDirect3DDevice9Ex* currentD3D9DeviceEx = nullptr;
+    std::vector<IDirect3DDevice9*> d3d9Devices;
 
     static UINT GetOwner()
     {

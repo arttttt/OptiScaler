@@ -20,6 +20,7 @@
 
 #include <hooks/Dxgi_Hooks.h>
 #include <hooks/D3D11_Hooks.h>
+#include <hooks/D3D9_Hooks.h>
 #include <hooks/D3D12_Hooks.h>
 #include <hooks/Vulkan_Hooks.h>
 #include <hooks/Gdi32_Hooks.h>
@@ -312,6 +313,16 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
     }
 
     // Hooks
+    if (CheckDllNameW(&libName, &dx9NamesW))
+    {
+        auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, 0);
+
+        if (module != nullptr)
+            D3D9Hooks::Hook(module);
+
+        return module;
+    }
+
     if (CheckDllNameW(&libName, &dx11NamesW))
     {
         auto module = NtdllProxy::LoadLibraryExW_Ldr(libName.c_str(), NULL, 0);

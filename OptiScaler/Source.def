@@ -17,7 +17,18 @@ D3D12PIXReportCounter = _D3D12PIXReportCounter @115 PRIVATE
 D3D12SerializeRootSignature = _D3D12SerializeRootSignatureExport @116 PRIVATE
 D3D12SerializeVersionedRootSignature = _D3D12SerializeVersionedRootSignatureExport @117 PRIVATE
 
-EXPORTS  
+EXPORTS
+Direct3DCreate9 = _Direct3DCreate9Export @200 PRIVATE
+Direct3DCreate9Ex = _Direct3DCreate9ExExport @201 PRIVATE
+D3DPERF_BeginEvent = _D3DPERF_BeginEventExport @202 PRIVATE
+D3DPERF_EndEvent = _D3DPERF_EndEventExport @203 PRIVATE
+D3DPERF_SetMarker = _D3DPERF_SetMarkerExport @204 PRIVATE
+D3DPERF_SetRegion = _D3DPERF_SetRegionExport @205 PRIVATE
+D3DPERF_QueryRepeatFrame = _D3DPERF_QueryRepeatFrameExport @206 PRIVATE
+D3DPERF_SetOptions = _D3DPERF_SetOptionsExport @207 PRIVATE
+D3DPERF_GetStatus = _D3DPERF_GetStatusExport @208 PRIVATE
+
+EXPORTS
 CreateDXGIFactory = _CreateDXGIFactory
 CreateDXGIFactory1 = _CreateDXGIFactory1
 CreateDXGIFactory2 = _CreateDXGIFactory2 

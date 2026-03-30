@@ -17,6 +17,8 @@ inline constexpr CString VkProvider = "OptiVk";
 inline constexpr CString Dx11Provider = "OptiDx11";
 // ID code used for the DX12 input provider
 inline constexpr CString Dx12Provider = "OptiDx12";
+// ID code used for the DX9 input provider
+inline constexpr CString Dx9Provider = "OptiDx9";
 
 inline constexpr CString FSR_UpscaleWidth = "FSR.upscaleSize.width";
 inline constexpr CString FSR_UpscaleHeight = "FSR.upscaleSize.height";
@@ -37,6 +39,7 @@ typedef enum API
     DX11,
     DX12,
     Vulkan,
+    DX9,
 } API;
 
 enum class Upscaler

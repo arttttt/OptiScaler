@@ -28,6 +28,7 @@
 #include <hooks/Dxgi_Hooks.h>
 #include <hooks/D3D11_Hooks.h>
 #include <hooks/D3D12_Hooks.h>
+#include <hooks/D3D9_Hooks.h>
 #include <hooks/Vulkan_Hooks.h>
 #include <hooks/Ntdll_Hooks.h>
 #include <hooks/Kernel_Hooks.h>
@@ -700,6 +701,61 @@ static void CheckWorkingMode()
             {
                 if (!_passThruMode)
                     LOG_ERROR("OptiScaler can't find original d3d12.dll!");
+            }
+
+            break;
+        }
+
+        // d3d9.dll
+        if (lCaseFilename == "d3d9.dll")
+        {
+            do
+            {
+                auto pluginFilePath = pluginPath / L"d3d9.dll";
+                originalModule = NtdllProxy::LoadLibraryExW_Ldr(pluginFilePath.wstring().c_str(), NULL, 0);
+                if (originalModule != nullptr)
+                {
+                    if (!_passThruMode)
+                        LOG_INFO("OptiScaler working as d3d9.dll, original dll loaded from plugin folder");
+
+                    break;
+                }
+
+                originalModule = NtdllProxy::LoadLibraryExW_Ldr(L"d3d9-original.dll", NULL, 0);
+                if (originalModule != nullptr)
+                {
+                    if (!_passThruMode)
+                        LOG_INFO("OptiScaler working as d3d9.dll, d3d9-original.dll loaded");
+
+                    break;
+                }
+
+                auto sysFilePath = sysPath / L"d3d9.dll";
+                originalModule = NtdllProxy::LoadLibraryExW_Ldr(sysFilePath.wstring().c_str(), NULL, 0);
+
+                if (originalModule != nullptr && !_passThruMode)
+                    LOG_INFO("OptiScaler working as d3d9.dll, system dll loaded");
+
+            } while (false);
+
+            if (originalModule != nullptr)
+            {
+                dllNames.push_back("d3d9.dll");
+                dllNames.push_back("d3d9");
+                dllNamesW.push_back(L"d3d9.dll");
+                dllNamesW.push_back(L"d3d9");
+
+                D3d9Proxy::Init(originalModule);
+                d3d9.LoadOriginalLibrary(originalModule);
+
+                State::Instance().workingMode = WorkingMode::D3d9;
+
+                modeFound = true;
+            }
+            else
+            {
+                if (!_passThruMode)
+                    LOG_ERROR("OptiScaler can't find original d3d9.dll!");
             }
 
             break;

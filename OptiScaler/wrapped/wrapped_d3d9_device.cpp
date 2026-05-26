@@ -38,6 +38,57 @@ void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
     _loggedDepthReadback = false;
 }
 
+// Phase 7 probe: scan a vertex-shader constant-buffer upload for a 4x4 block
+// that looks like a perspective projection matrix. Log up to 5 hits, then go
+// quiet to avoid spamming the per-draw hot path.
+//
+// DX9 row-major perspective:  m[2][3] == 1, m[3][3] == 0
+// Column-major (transposed):  m[3][2] == 1, m[3][3] == 0
+// Both cases require non-zero m00/m11 (focal / aspect terms).
+void WrappedIDirect3DDevice9Ex::ProbeForProjectionMatrix(UINT startRegister, const float* data, UINT vector4fCount)
+{
+    if (_projectionMatchCount >= 5)
+        return;
+
+    constexpr float kEps = 1e-3f;
+
+    for (UINT i = 0; i + 4 <= vector4fCount; i += 4)
+    {
+        const float* m = data + i * 4;
+
+        const float m00 = m[0];
+        const float m11 = m[5];
+        const float m22 = m[10];
+        const float m33 = m[15];
+        const float m23 = m[11];
+        const float m32 = m[14];
+
+        const bool basic =
+            std::fabs(m00) > kEps &&
+            std::fabs(m11) > kEps &&
+            std::fabs(m33) < kEps;
+
+        const bool rowMaj = basic && std::fabs(m23 - 1.0f) < kEps;
+        const bool colMaj = basic && std::fabs(m32 - 1.0f) < kEps;
+
+        if (rowMaj || colMaj)
+        {
+            _projectionMatchCount++;
+            LOG_INFO("Phase 7 probe: possible {} projection at vs c{}-c{} (m00={:.3f}, m11={:.3f}, m22={:.3f})",
+                     rowMaj ? "row-major" : "col-major",
+                     startRegister + i,
+                     startRegister + i + 3,
+                     m00, m11, m22);
+
+            if (_projectionMatchCount >= 5)
+            {
+                LOG_INFO("Phase 7 probe: hit log cap (5), further matches will be silent");
+                return;
+            }
+        }
+    }
+}
+
 void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
 {
     if (!_trackedDepthSurface)
@@ -225,7 +276,17 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Reset(D3DPRESENT_PARAMETERS
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion)
 {
     if (Config::Instance()->Dx9TAA.value_or_default())
+    {
+        if (!_loggedFirstFrameVSStats)
+        {
+            _loggedFirstFrameVSStats = true;
+            LOG_INFO("Phase 7 probe: first frame VS constant calls={}, projection matches={}",
+                     _vsConstCallsThisFrame, _projectionMatchCount);
+        }
+        _vsConstCallsThisFrame = 0;
+
         AttemptDepthReadback();
+    }
 
     return _real->Present(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);
 }
@@ -714,6 +775,12 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetVertexShader(IDirect3DVe
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetVertexShaderConstantF(UINT StartRegister, CONST float* pConstantData, UINT Vector4fCount)
 {
+    if (Config::Instance()->Dx9TAA.value_or_default() && pConstantData)
+    {
+        _vsConstCallsThisFrame++;
+        ProbeForProjectionMatrix(StartRegister, pConstantData, Vector4fCount);
+    }
+
     return _real->SetVertexShaderConstantF(StartRegister, pConstantData, Vector4fCount);
 }
 
@@ -863,7 +930,17 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::PresentEx(CONST RECT* pSour
         return E_NOTIMPL;
 
     if (Config::Instance()->Dx9TAA.value_or_default())
+    {
+        if (!_loggedFirstFrameVSStats)
+        {
+            _loggedFirstFrameVSStats = true;
+            LOG_INFO("Phase 7 probe: first frame VS constant calls={}, projection matches={}",
+                     _vsConstCallsThisFrame, _projectionMatchCount);
+        }
+        _vsConstCallsThisFrame = 0;
+
         AttemptDepthReadback();
+    }
 
     return _realEx->PresentEx(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion, dwFlags);
 }

@@ -153,6 +153,7 @@ public:
 private:
     void InvalidateTrackedResources();
     void AttemptDepthReadback();
+    void ProbeForProjectionMatrix(UINT startRegister, const float* data, UINT vector4fCount);
 
 
     IDirect3DDevice9* _real = nullptr;
@@ -188,4 +189,10 @@ private:
     // log proves the inject ran without spamming every frame.
     bool _loggedProjectionJitter = false;
     bool _loggedIndicatorDraw = false;
+
+    // Phase 7 probe: counts to figure out how the game uses vertex shader constants.
+    // Capped logging so we never spam the per-draw hot path.
+    int _vsConstCallsThisFrame = 0;
+    int _projectionMatchCount = 0;
+    bool _loggedFirstFrameVSStats = false;
 };

@@ -2,6 +2,7 @@
 #include "wrapped_d3d9_device.h"
 
 #include "misc/HaltonSequence.h"
+#include "wrapped_d3d9_depthstencil.h"
 
 WrappedIDirect3DDevice9Ex::WrappedIDirect3DDevice9Ex(IDirect3DDevice9* real, IDirect3DDevice9Ex* realEx, HWND hwnd, D3DPRESENT_PARAMETERS* pPresentParams)
     : _real(real), _realEx(realEx), _hwnd(hwnd)
@@ -397,6 +398,11 @@ void WrappedIDirect3DDevice9Ex::ReleaseIntzMap()
 {
     for (auto& kv : _intzTextureBySurface)
     {
+        // The key is a WrappedDepthStencilSurface9 we AddRef'd when inserting;
+        // release that hidden ref so it can be destroyed if the game already
+        // dropped its last public ref. The texture ref is similarly ours.
+        if (kv.first)
+            kv.first->Release();
         if (kv.second)
             kv.second->Release();
     }
@@ -448,6 +454,8 @@ void WrappedIDirect3DDevice9Ex::InitAutoDepthIntz(UINT width, UINT height)
         return;
     }
 
+    // Bind the raw INTZ surface to the real device first — only the real
+    // surface is something the device knows how to use.
     hr = _real->SetDepthStencilSurface(surf);
     if (FAILED(hr))
     {
@@ -457,29 +465,38 @@ void WrappedIDirect3DDevice9Ex::InitAutoDepthIntz(UINT width, UINT height)
         return;
     }
 
-    // Add to map so the readback path can find which INTZ texture backs this
-    // surface. The map owns the texture ref; the surface ref is shared with
-    // the device's internal binding plus our _trackedDepthSurface seat.
-    _intzTextureBySurface[surf] = tex;
+    // Wrap so GetDepthStencilSurface lookups can return a proxy whose GetDesc
+    // reports the original D24S8 format (most games verify it and reject INTZ).
+    D3DSURFACE_DESC reportedDesc = {};
+    reportedDesc.Format = D3DFMT_D24S8; // canonical D3D9 auto-depth format
+    reportedDesc.Type = D3DRTYPE_SURFACE;
+    reportedDesc.Usage = D3DUSAGE_DEPTHSTENCIL;
+    reportedDesc.Pool = D3DPOOL_DEFAULT;
+    reportedDesc.MultiSampleType = D3DMULTISAMPLE_NONE;
+    reportedDesc.MultiSampleQuality = 0;
+    reportedDesc.Width = width;
+    reportedDesc.Height = height;
+
+    auto* wrapper = new WrappedDepthStencilSurface9(surf, reportedDesc);
+
+    // Map entry: wrapper (+1 ref) -> texture.
+    wrapper->AddRef();
+    _intzTextureBySurface[wrapper] = tex;
 
     if (_trackedDepthSurface)
         _trackedDepthSurface->Release();
-    _trackedDepthSurface = surf;
+    _trackedDepthSurface = wrapper; // owns the construction's initial ref
     _trackedDepthArea = width * height;
-    _trackedDepthDesc = {};
-    _trackedDepthDesc.Width = width;
-    _trackedDepthDesc.Height = height;
-    _trackedDepthDesc.Format = intzFormat;
-    _trackedDepthDesc.MultiSampleType = D3DMULTISAMPLE_NONE;
+    _trackedDepthDesc = reportedDesc;
 
-    _loggedDepthCapture = true;   // suppress redundant SetDepthStencilSurface log
-    _loggedIntzCreation = true;   // suppress redundant intercept log
+    _loggedDepthCapture = true;
+    _loggedIntzCreation = true;
     _loggedReadbackSkip = false;
     _loggedReadbackResult = false;
 
-    _autoDepthSubstituted = true; // makes Reset re-run us on the new device state
+    _autoDepthSubstituted = true;
 
-    LOG_INFO("Auto-depth INTZ initialised and bound ({}x{})", width, height);
+    LOG_INFO("Auto-depth INTZ initialised and bound ({}x{}, proxy reports D24S8 to game)", width, height);
 }
 
 // Phase 3 Mark 2 c2: score every tracked depth surface against the ReShade
@@ -1082,33 +1099,45 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateDepthStencilSurface(U
 
             if (SUCCEEDED(hr) && intzSurf != nullptr)
             {
-                // Record (surface, texture) so the readback path can look
-                // up which INTZ-backed texture to sample for this surface.
-                _intzTextureBySurface[intzSurf] = intzTex; // we own the texture ref
+                // Wrap the INTZ surface in a proxy that reports the ORIGINAL
+                // depth format on GetDesc. Games like NFSU / Oblivion / Fallout
+                // verify the format and reject INTZ-shaped depth, so the proxy
+                // is what fixes them.
+                D3DSURFACE_DESC reportedDesc = {};
+                reportedDesc.Format = Format;          // game-requested format
+                reportedDesc.Type = D3DRTYPE_SURFACE;
+                reportedDesc.Usage = D3DUSAGE_DEPTHSTENCIL;
+                reportedDesc.Pool = D3DPOOL_DEFAULT;
+                reportedDesc.MultiSampleType = MultiSample;
+                reportedDesc.MultiSampleQuality = MultisampleQuality;
+                reportedDesc.Width = Width;
+                reportedDesc.Height = Height;
 
-                // Force-update tracking to this INTZ surface. Same-size
-                // replacement is skipped by the area heuristic in
-                // SetDepthStencilSurface, so we update directly here.
+                auto* wrapper = new WrappedDepthStencilSurface9(intzSurf, reportedDesc);
+
+                // Map entry: wrapper (with extra ref) -> texture.
+                wrapper->AddRef();
+                _intzTextureBySurface[wrapper] = intzTex;
+
+                // Force-update tracking to this wrapper. Same-size replacement
+                // is skipped by the area heuristic in SetDepthStencilSurface,
+                // so we update directly here.
                 if (_trackedDepthSurface)
                     _trackedDepthSurface->Release();
-                _trackedDepthSurface = intzSurf;
+                _trackedDepthSurface = wrapper;
                 _trackedDepthSurface->AddRef();
                 _trackedDepthArea = Width * Height;
-                _trackedDepthDesc.Width = Width;
-                _trackedDepthDesc.Height = Height;
-                _trackedDepthDesc.Format = intzFormat;
-                _trackedDepthDesc.MultiSampleType = D3DMULTISAMPLE_NONE;
+                _trackedDepthDesc = reportedDesc;
 
-                // Re-arm logs so the next readback attempt reports its outcome.
                 _loggedReadbackSkip = false;
                 _loggedReadbackResult = false;
 
-                *ppSurface = intzSurf; // game owns this ref
+                *ppSurface = wrapper; // game owns the construction's initial ref
 
                 if (!_loggedIntzCreation)
                 {
                     _loggedIntzCreation = true;
-                    LOG_INFO("INTZ depth surface created ({}x{}, in place of format=0x{:X})",
+                    LOG_INFO("INTZ depth surface created ({}x{}, in place of format=0x{:X}, GetDesc reports original)",
                              Width, Height, static_cast<uint32_t>(Format));
                 }
                 return S_OK;
@@ -1176,8 +1205,24 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetRenderTarget(DWORD Rende
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetDepthStencilSurface(IDirect3DSurface9* pNewZStencil)
 {
     // Phase 3 Mark 2: register/update the stats entry and mark it current so
-    // subsequent Draw* calls accumulate against it.
+    // subsequent Draw* calls accumulate against it. The stats key is the
+    // game-facing surface (potentially our wrapper) so identification can
+    // round-trip through GetDepthStencilSurface consistently.
     RegisterDepthSurfaceForStats(pNewZStencil);
+
+    // Phase 3 Mark 3: if game is binding one of our INTZ proxies, the real
+    // device must receive the underlying INTZ surface — D3D9 has no idea
+    // about our wrapper class.
+    IDirect3DSurface9* deviceFacing = pNewZStencil;
+    if (pNewZStencil)
+    {
+        WrappedDepthStencilSurface9* wrapper = nullptr;
+        if (SUCCEEDED(pNewZStencil->QueryInterface(__uuidof(WrappedDepthStencilSurface9), reinterpret_cast<void**>(&wrapper))))
+        {
+            deviceFacing = wrapper->RealSurface();
+            wrapper->Release(); // QueryInterface AddRef'd
+        }
+    }
 
     if (pNewZStencil)
     {
@@ -1215,12 +1260,39 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetDepthStencilSurface(IDir
         }
     }
 
-    return _real->SetDepthStencilSurface(pNewZStencil);
+    return _real->SetDepthStencilSurface(deviceFacing);
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetDepthStencilSurface(IDirect3DSurface9** ppZStencilSurface)
 {
-    return _real->GetDepthStencilSurface(ppZStencilSurface);
+    if (ppZStencilSurface == nullptr)
+        return D3DERR_INVALIDCALL;
+
+    IDirect3DSurface9* deviceSurf = nullptr;
+    const HRESULT hr = _real->GetDepthStencilSurface(&deviceSurf);
+    if (FAILED(hr) || deviceSurf == nullptr)
+    {
+        *ppZStencilSurface = deviceSurf;
+        return hr;
+    }
+
+    // Phase 3 Mark 3: if the bound surface is one of our raw INTZ surfaces,
+    // return the matching proxy instead so the game's GetDesc on the result
+    // sees the original depth format.
+    for (const auto& kv : _intzTextureBySurface)
+    {
+        auto* wrapper = static_cast<WrappedDepthStencilSurface9*>(kv.first);
+        if (wrapper && wrapper->RealSurface() == deviceSurf)
+        {
+            wrapper->AddRef();
+            deviceSurf->Release(); // drop the ref _real handed us
+            *ppZStencilSurface = wrapper;
+            return S_OK;
+        }
+    }
+
+    *ppZStencilSurface = deviceSurf;
+    return hr;
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::BeginScene()
@@ -1842,27 +1914,37 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateDepthStencilSurfaceEx
 
             if (SUCCEEDED(hr) && intzSurf != nullptr)
             {
-                _intzTextureBySurface[intzSurf] = intzTex; // we own the texture ref
+                D3DSURFACE_DESC reportedDesc = {};
+                reportedDesc.Format = Format;
+                reportedDesc.Type = D3DRTYPE_SURFACE;
+                reportedDesc.Usage = D3DUSAGE_DEPTHSTENCIL | Usage;
+                reportedDesc.Pool = D3DPOOL_DEFAULT;
+                reportedDesc.MultiSampleType = MultiSample;
+                reportedDesc.MultiSampleQuality = MultisampleQuality;
+                reportedDesc.Width = Width;
+                reportedDesc.Height = Height;
+
+                auto* wrapper = new WrappedDepthStencilSurface9(intzSurf, reportedDesc);
+
+                wrapper->AddRef();
+                _intzTextureBySurface[wrapper] = intzTex;
 
                 if (_trackedDepthSurface)
                     _trackedDepthSurface->Release();
-                _trackedDepthSurface = intzSurf;
+                _trackedDepthSurface = wrapper;
                 _trackedDepthSurface->AddRef();
                 _trackedDepthArea = Width * Height;
-                _trackedDepthDesc.Width = Width;
-                _trackedDepthDesc.Height = Height;
-                _trackedDepthDesc.Format = intzFormat;
-                _trackedDepthDesc.MultiSampleType = D3DMULTISAMPLE_NONE;
+                _trackedDepthDesc = reportedDesc;
 
                 _loggedReadbackSkip = false;
                 _loggedReadbackResult = false;
 
-                *ppSurface = intzSurf;
+                *ppSurface = wrapper;
 
                 if (!_loggedIntzCreation)
                 {
                     _loggedIntzCreation = true;
-                    LOG_INFO("INTZ depth surface created via Ex ({}x{}, in place of format=0x{:X})",
+                    LOG_INFO("INTZ depth surface created via Ex ({}x{}, in place of format=0x{:X}, GetDesc reports original)",
                              Width, Height, static_cast<uint32_t>(Format));
                 }
                 return S_OK;

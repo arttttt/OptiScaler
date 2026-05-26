@@ -5,6 +5,7 @@
 #include "misc/HaltonSequence.h"
 #include "upscalers/IFeature_Dx9wDx11.h"
 #include "wrapped_d3d9_depthstencil.h"
+#include "wrapped_d3d9_vertexshader.h"
 
 // DX9 row-major 4x4 multiply: out = a * b, i.e. row-vec * a * b.
 // D3DMATRIX::m[i][j] is row i, col j. No D3DX9 dependency.
@@ -615,6 +616,14 @@ void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
     _bridge.reset();
     _bridgeInitTried = false;
     _bridgeDisabled = false;
+
+    // Phase 7 Session 1: drop the currently-bound vertex-shader wrapper so we
+    // don't hold its underlying _real ref across a device-state reset.
+    if (_currentVsWrapper != nullptr)
+    {
+        _currentVsWrapper->Release();
+        _currentVsWrapper = nullptr;
+    }
 
     ReleaseDepthStatsMap();
 
@@ -1705,16 +1714,92 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateVertexShader(CONST DW
         _vsAnalyzed++;
     }
 
-    return _real->CreateVertexShader(pFunction, ppShader);
+    // Phase 7 Session 1: wrap every VS in WrappedVertexShader9. The wrapper
+    // currently forwards everything to _real; Sessions 2-4 add the disasm/
+    // transform/asm patching pipeline. Wrap unconditionally so the wrapper
+    // refcount equals the game-visible refcount, which keeps lifecycle clean
+    // when the patcher comes online later.
+    IDirect3DVertexShader9* realShader = nullptr;
+    HRESULT hr = _real->CreateVertexShader(pFunction, &realShader);
+    if (FAILED(hr) || realShader == nullptr)
+    {
+        if (ppShader != nullptr)
+            *ppShader = nullptr;
+        return hr;
+    }
+
+    if (Config::Instance()->Dx9TAA.value_or_default() && pFunction != nullptr)
+    {
+        const size_t dwordLen = DxbcVsPatcher::BytecodeDwordLength(pFunction);
+        const uint64_t hash   = (dwordLen > 0) ? DxbcVsPatcher::HashBytecode(pFunction, dwordLen) : 0ull;
+
+        auto* wrapper = new WrappedVertexShader9(realShader, pFunction, dwordLen, hash);
+
+        if (_vsWrappedCount < 5)
+        {
+            LOG_INFO("Phase 7 Session 1: wrapped VS hash=0x{:016X}, len={} dwords (#{})",
+                     hash, dwordLen, _vsWrappedCount);
+        }
+        _vsWrappedCount++;
+
+        if (ppShader != nullptr)
+            *ppShader = wrapper;
+    }
+    else
+    {
+        // Dx9TAA off or no bytecode — hand back the real shader untouched.
+        if (ppShader != nullptr)
+            *ppShader = realShader;
+    }
+
+    return hr;
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetVertexShader(IDirect3DVertexShader9* pShader)
 {
+    // Unwrap if this is one of our wrappers — the underlying device only
+    // knows about real shaders. We also track the wrapper so GetVertexShader
+    // can return it back to the game; Sessions 3+ use the same handle to
+    // look up the per-shader jitter constant slot before each draw.
+    WrappedVertexShader9* wrapper = nullptr;
+    if (pShader != nullptr &&
+        SUCCEEDED(pShader->QueryInterface(__uuidof(WrappedVertexShader9), reinterpret_cast<void**>(&wrapper))))
+    {
+        IDirect3DVertexShader9* effective = wrapper->EffectiveShader();
+        HRESULT hr = _real->SetVertexShader(effective);
+
+        // Replace _currentVsWrapper with the AddRef'd query result so the
+        // wrapper stays alive across frames while bound.
+        if (_currentVsWrapper != nullptr)
+            _currentVsWrapper->Release();
+        _currentVsWrapper = wrapper;  // QueryInterface already AddRef'd it
+        return hr;
+    }
+
+    // Not one of our wrappers (game might have built a shader some other way,
+    // or shader is nullptr to clear). Forward as-is and drop our tracked one.
+    if (_currentVsWrapper != nullptr)
+    {
+        _currentVsWrapper->Release();
+        _currentVsWrapper = nullptr;
+    }
     return _real->SetVertexShader(pShader);
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetVertexShader(IDirect3DVertexShader9** ppShader)
 {
+    if (ppShader == nullptr)
+        return D3DERR_INVALIDCALL;
+
+    // If the game last bound one of our wrappers, hand the wrapper back so
+    // the game sees consistent pointers (their SetVertexShader argument and
+    // GetVertexShader result match).
+    if (_currentVsWrapper != nullptr)
+    {
+        _currentVsWrapper->AddRef();
+        *ppShader = _currentVsWrapper;
+        return S_OK;
+    }
     return _real->GetVertexShader(ppShader);
 }
 

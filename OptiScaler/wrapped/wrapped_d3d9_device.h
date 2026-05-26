@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 class IFeature_Dx9wDx11;
+class WrappedVertexShader9;
 
 // Per-depth-stencil-surface statistics for ReShade-style scene-depth
 // identification. We accumulate draw / vertex counts each frame and use them
@@ -260,6 +261,17 @@ private:
     // Phase 7a: how many VS bytecode blobs we've already analyzed for oPos
     // writes. Capped to keep logs readable.
     int _vsAnalyzed = 0;
+
+    // Phase 7 Session 1: count of vertex shaders we've wrapped so far.
+    // First few wrap events log so we can verify the COM plumbing is alive.
+    int _vsWrappedCount = 0;
+
+    // The wrapped vertex shader currently bound to the device, if any.
+    // SetVertexShader stores it (AddRef'd via QueryInterface in the hook),
+    // GetVertexShader hands it back, dtor / InvalidateTrackedResources
+    // release it. nullptr when the game last bound a non-wrapped shader or
+    // cleared the VS.
+    WrappedVertexShader9* _currentVsWrapper = nullptr;
 
     // Phase 3 Mark 2: per-depth-surface activity tracking (ReShade-style).
     // Each surface bound as depth-stencil gets an entry; Draw* methods bump its

@@ -604,9 +604,9 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="nvapi\fakenvapi\nvapi_calls.cpp" />
     <ClCompile Include="OptiTypes.cpp" />
     <ClCompile Include="pch.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="shaders\depth_invert\DI_Dx12.cpp" />
     <ClCompile Include="shaders\hud_copy\HudCopy_Dx12.cpp" />
@@ -634,34 +634,34 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="hooks\Streamline_Hooks.cpp" />
     <ClCompile Include="hudfix\Hudfix_Dx12.cpp" />
     <ClCompile Include="include\imgui\imgui_impl_dx11.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_impl_dx12.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_impl_uwp.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_impl_vulkan.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_impl_win32.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="include\sl.param\parameters.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="inputs\FfxApiExe_Dx12.cpp" />
     <ClCompile Include="inputs\FG\FfxApi_Dx12_FG.cpp" />
@@ -727,29 +727,29 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="wrapped\wrapped_d3d9_device.cpp" />
     <ClCompile Include="wrapped\wrapped_swapchain.cpp" />
     <ClCompile Include="include\imgui\imgui.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_draw.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_tables.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_widgets.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="include\imgui\misc\freetype\imgui_freetype.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="Logger.cpp" />
     <ClCompile Include="inputs\NVNGX.cpp" />

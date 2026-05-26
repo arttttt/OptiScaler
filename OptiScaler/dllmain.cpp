@@ -925,6 +925,7 @@ static void CheckWorkingMode()
         auto nvapi64 = LibraryLoadHooks::LoadNvApi();
     }
 
+#ifndef _M_IX86
     // GDI32
     hookGdi32();
 
@@ -940,6 +941,7 @@ static void CheckWorkingMode()
     {
         hookAdvapi32();
     }
+#endif
 
     // User32
     if (Config::Instance()->SpoofUser32.value_or_default())

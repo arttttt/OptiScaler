@@ -597,6 +597,7 @@ HMODULE LibraryLoadHooks::LoadNvApi()
 
     HMODULE nvapi = nullptr;
 
+#ifndef _M_IX86
     // Opti exports a query function that nvapi would export
     if (Config::Instance()->UseFakenvapi.value_or_default() &&
         IdentifyGpu::getPrimaryGpu().vendorId != VendorId::Nvidia)
@@ -622,6 +623,7 @@ HMODULE LibraryLoadHooks::LoadNvApi()
 
     if (nvapi != nullptr)
         NvApiHooks::Hook(nvapi);
+#endif
 
     return nvapi;
 }

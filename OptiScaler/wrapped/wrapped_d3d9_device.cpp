@@ -323,15 +323,9 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetTransform(D3DTRANSFORMST
                     constexpr int32_t phaseCount = 8;
                     HaltonSequence::GetJitterOffset(_frameIndex, phaseCount, &_jitterX, &_jitterY);
 
-                    // TEMP: 16x amplification so the jitter is visible to the naked eye.
-                    // Real DLAA uses ±0.5 px which is sub-pixel. Revert to 1.0 once verified.
-                    constexpr float kDebugJitterScale = 16.0f;
-                    const float pxX = _jitterX * kDebugJitterScale;
-                    const float pxY = _jitterY * kDebugJitterScale;
-
                     // Y sign is AMD's DX12 reference; DX9 Y-convention may flip — verify visually.
-                    const float clipX = 2.0f * pxX / static_cast<float>(width);
-                    const float clipY = -2.0f * pxY / static_cast<float>(height);
+                    const float clipX = 2.0f * _jitterX / static_cast<float>(width);
+                    const float clipY = -2.0f * _jitterY / static_cast<float>(height);
 
                     D3DMATRIX jittered = *pMatrix;
                     jittered._31 += clipX;

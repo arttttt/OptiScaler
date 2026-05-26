@@ -16,10 +16,19 @@ WrappedIDirect3DDevice9Ex::WrappedIDirect3DDevice9Ex(IDirect3DDevice9* real, IDi
 
 WrappedIDirect3DDevice9Ex::~WrappedIDirect3DDevice9Ex()
 {
+    InvalidateTrackedResources();
+}
+
+void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
+{
     if (_trackedDepthSurface)
     {
+        _trackedDepthSurface->Release();
         _trackedDepthSurface = nullptr;
     }
+    _trackedDepthArea = 0;
+    _trackedDepthDesc = {};
+    _loggedDepthCapture = false;
 }
 
 // =============================================================================
@@ -141,6 +150,11 @@ UINT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetNumberOfSwapChains()
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Reset(D3DPRESENT_PARAMETERS* pPresentationParameters)
 {
+    InvalidateTrackedResources();
+
+    if (pPresentationParameters)
+        _presentParams = *pPresentationParameters;
+
     return _real->Reset(pPresentationParameters);
 }
 
@@ -256,8 +270,41 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetRenderTarget(DWORD Rende
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetDepthStencilSurface(IDirect3DSurface9* pNewZStencil)
 {
-    // Tracking stub: save depth stencil surface for later phases
-    _trackedDepthSurface = pNewZStencil;
+    if (pNewZStencil)
+    {
+        D3DSURFACE_DESC desc = {};
+        if (SUCCEEDED(pNewZStencil->GetDesc(&desc)))
+        {
+            const UINT area = desc.Width * desc.Height;
+
+            // Filter: only consider depth surfaces matching backbuffer dimensions.
+            // Skips shadow maps, post-process depth copies, etc.
+            const bool matchesBackbuffer =
+                _presentParams.BackBufferWidth > 0 &&
+                desc.Width == _presentParams.BackBufferWidth &&
+                desc.Height == _presentParams.BackBufferHeight;
+
+            if (matchesBackbuffer && area > _trackedDepthArea)
+            {
+                if (_trackedDepthSurface)
+                    _trackedDepthSurface->Release();
+
+                _trackedDepthSurface = pNewZStencil;
+                _trackedDepthSurface->AddRef();
+                _trackedDepthArea = area;
+                _trackedDepthDesc = desc;
+
+                if (!_loggedDepthCapture)
+                {
+                    _loggedDepthCapture = true;
+                    LOG_INFO("Tracked scene depth surface: {}x{}, format=0x{:X}, MS={}",
+                             desc.Width, desc.Height,
+                             static_cast<uint32_t>(desc.Format),
+                             static_cast<int>(desc.MultiSampleType));
+                }
+            }
+        }
+    }
 
     return _real->SetDepthStencilSurface(pNewZStencil);
 }
@@ -835,6 +882,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::ResetEx(D3DPRESENT_PARAMETE
 {
     if (_realEx == nullptr)
         return E_NOTIMPL;
+
+    InvalidateTrackedResources();
+
+    if (pPresentationParameters)
+        _presentParams = *pPresentationParameters;
 
     return _realEx->ResetEx(pPresentationParameters, pFullscreenDisplayMode);
 }

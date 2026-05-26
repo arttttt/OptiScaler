@@ -151,6 +151,8 @@ public:
     IDirect3DDevice9* GetReal() { return _real; }
 
 private:
+    void InvalidateTrackedResources();
+
     IDirect3DDevice9* _real = nullptr;
     IDirect3DDevice9Ex* _realEx = nullptr;
     LONG _refcount = 1;
@@ -162,7 +164,13 @@ private:
     D3DMATRIX _currentProjection = {};
     D3DMATRIX _currentView = {};
     D3DMATRIX _currentWorld = {};
+
+    // Phase 3: scene depth surface (largest one matching backbuffer dims).
+    // AddRef'd while tracked, released on dtor / Reset / replacement.
     IDirect3DSurface9* _trackedDepthSurface = nullptr;
+    UINT _trackedDepthArea = 0;
+    D3DSURFACE_DESC _trackedDepthDesc = {};
+    bool _loggedDepthCapture = false;
 
     // Phase 2: sub-pixel jitter applied this frame, in pixel space.
     // Forwarded to the upscaler in later phases.

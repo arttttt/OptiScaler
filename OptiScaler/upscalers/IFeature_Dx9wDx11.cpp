@@ -65,7 +65,6 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
         return false;
     }
 
-    LOG_INFO("Dx9wDx11 Init: about to CreateQuery(EVENT)");
     const HRESULT qhr = _gameDevice->CreateQuery(D3DQUERYTYPE_EVENT, &_eventQuery);
     if (FAILED(qhr) || _eventQuery == nullptr)
     {
@@ -73,17 +72,24 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
         ReleaseAll();
         return false;
     }
-    LOG_INFO("Dx9wDx11 Init: CreateQuery ok");
 
-    // 5b RTV: skipped pending diagnosis. Previously this block crashed HL2
-    // hard, killing the process between CreateSharedColor and the next log
-    // emit. Going back to pure 5a behavior (CopyResource round-trip) until
-    // we can identify the failure point with the breadcrumbs above.
-    _sharedOutRtv = nullptr;
+    // 5b RTV (second attempt): debug layer is now off so any RTV-create
+    // failure comes back as hr instead of __debugbreak(). Passing nullptr
+    // for the view desc lets D3D11 pick the default that matches the
+    // texture's format exactly — avoids any DXGI mapping mismatch.
+    LOG_INFO("Dx9wDx11 Init: about to CreateRenderTargetView");
+    HRESULT rtvHr = _dx11Device->CreateRenderTargetView(_sharedOutTex11, nullptr, &_sharedOutRtv);
+    if (FAILED(rtvHr))
+    {
+        LOG_WARN("Dx9wDx11: shared-out RTV creation failed hr=0x{:08X} — debug clear disabled",
+                 static_cast<uint32_t>(rtvHr));
+        _sharedOutRtv = nullptr;
+    }
+    LOG_INFO("Dx9wDx11 Init: CreateRenderTargetView done (rtv={})", _sharedOutRtv != nullptr ? "ok" : "null");
 
     _init = true;
-    LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X}, rtv=none-by-design)", _width, _height,
-             static_cast<uint32_t>(_gameFormat));
+    LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X}, rtv={})", _width, _height,
+             static_cast<uint32_t>(_gameFormat), _sharedOutRtv != nullptr ? "ok" : "none");
     return true;
 }
 

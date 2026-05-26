@@ -342,7 +342,9 @@ void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
     if (!_trackedDepthSurface)
         return;
 
-    // MSAA depth needs resolve via StretchRect first — out of scope for Phase 3 MVP.
+    // MSAA tracked depth means our INTZ substitution didn't apply (we only
+    // intercept non-MSAA creation), so we can't sample it directly. Out of
+    // scope for Phase 3 MVP.
     if (_trackedDepthDesc.MultiSampleType != D3DMULTISAMPLE_NONE)
     {
         if (!_loggedDepthReadback)
@@ -355,42 +357,134 @@ void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
         return;
     }
 
-    // Staging surface: same format/dims, SYSTEMMEM. Created lazily, freed on Reset.
+    // Without an INTZ-backed texture we have nothing to sample. This branch
+    // hits when the game requested a non-D24 depth format (e.g. D16) and we
+    // didn't intercept its creation.
+    if (!_intzDepthTexture)
+    {
+        if (!_loggedDepthReadback)
+        {
+            _loggedDepthReadback = true;
+            LOG_WARN("Depth readback skipped: tracked surface is not INTZ-backed (format=0x{:X})",
+                     static_cast<uint32_t>(_trackedDepthDesc.Format));
+        }
+        return;
+    }
+
+    const UINT width = _trackedDepthDesc.Width;
+    const UINT height = _trackedDepthDesc.Height;
+
+    if (!EnsureDepthCopyPS() || !EnsureDepthCopyRT(width, height) || !EnsureDepthCopyVB(width, height))
+        return; // helpers already logged the specific failure
+
+    // Capture every render state so the game sees no side effects after we draw.
+    IDirect3DStateBlock9* savedState = nullptr;
+    HRESULT hr = _real->CreateStateBlock(D3DSBT_ALL, &savedState);
+    if (FAILED(hr) || savedState == nullptr)
+    {
+        if (!_loggedDepthReadback)
+        {
+            _loggedDepthReadback = true;
+            LOG_ERROR("CreateStateBlock failed: hr=0x{:08X}", static_cast<uint32_t>(hr));
+        }
+        return;
+    }
+
+    // Set up the copy pass: R32F as RT, depth disabled, our PS + INTZ as sampler 0.
+    _real->SetRenderTarget(0, _depthCopyRTSurface);
+    _real->SetDepthStencilSurface(nullptr);
+
+    _real->SetVertexShader(nullptr);
+    _real->SetPixelShader(_depthCopyPS);
+    _real->SetFVF(D3DFVF_XYZRHW | D3DFVF_TEX1);
+    _real->SetStreamSource(0, _depthCopyVB, 0, sizeof(float) * 6);
+
+    _real->SetTexture(0, _intzDepthTexture);
+    _real->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
+    _real->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
+    _real->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+    _real->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+
+    _real->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+    _real->SetRenderState(D3DRS_LIGHTING, FALSE);
+    _real->SetRenderState(D3DRS_ZENABLE, FALSE);
+    _real->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+    _real->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+    _real->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    _real->SetRenderState(D3DRS_FOGENABLE, FALSE);
+    _real->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+    _real->SetRenderState(D3DRS_COLORWRITEENABLE, 0x0F);
+
+    const HRESULT drawHr = _real->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
+
+    // Restore everything regardless of draw outcome.
+    savedState->Apply();
+    savedState->Release();
+
+    if (FAILED(drawHr))
+    {
+        if (!_loggedDepthReadback)
+        {
+            _loggedDepthReadback = true;
+            LOG_ERROR("Depth-copy DrawPrimitive failed: hr=0x{:08X}", static_cast<uint32_t>(drawHr));
+        }
+        return;
+    }
+
+    // Now stage R32F -> SYSTEMMEM. CreateOffscreenPlainSurface accepts R32F
+    // (unlike D24S8) so this part works.
     if (!_depthStagingSurface)
     {
-        HRESULT hr = _real->CreateOffscreenPlainSurface(
-            _trackedDepthDesc.Width,
-            _trackedDepthDesc.Height,
-            _trackedDepthDesc.Format,
+        const HRESULT stagingHr = _real->CreateOffscreenPlainSurface(
+            width, height,
+            D3DFMT_R32F,
             D3DPOOL_SYSTEMMEM,
             &_depthStagingSurface,
             nullptr);
 
-        if (FAILED(hr))
+        if (FAILED(stagingHr))
         {
             if (!_loggedDepthReadback)
             {
                 _loggedDepthReadback = true;
-                LOG_ERROR("Depth staging CreateOffscreenPlainSurface failed: hr=0x{:08X} (format=0x{:X})",
-                          static_cast<uint32_t>(hr),
-                          static_cast<uint32_t>(_trackedDepthDesc.Format));
+                LOG_ERROR("R32F staging CreateOffscreenPlainSurface failed: hr=0x{:08X}",
+                          static_cast<uint32_t>(stagingHr));
             }
             return;
         }
     }
 
-    const HRESULT hr = _real->GetRenderTargetData(_trackedDepthSurface, _depthStagingSurface);
+    const HRESULT readbackHr = _real->GetRenderTargetData(_depthCopyRTSurface, _depthStagingSurface);
 
     if (!_loggedDepthReadback)
     {
         _loggedDepthReadback = true;
-        if (SUCCEEDED(hr))
-            LOG_INFO("Depth GetRenderTargetData OK ({}x{}, format=0x{:X})",
-                     _trackedDepthDesc.Width, _trackedDepthDesc.Height,
-                     static_cast<uint32_t>(_trackedDepthDesc.Format));
+
+        if (FAILED(readbackHr))
+        {
+            LOG_ERROR("Depth GetRenderTargetData (R32F) failed: hr=0x{:08X}",
+                      static_cast<uint32_t>(readbackHr));
+            return;
+        }
+
+        // Sanity-check: read the center pixel. INTZ depth is in [0,1] (post
+        // perspective divide), so anything outside that range means the copy
+        // path produced garbage.
+        D3DLOCKED_RECT locked = {};
+        const HRESULT lockHr = _depthStagingSurface->LockRect(&locked, nullptr, D3DLOCK_READONLY);
+        if (SUCCEEDED(lockHr) && locked.pBits != nullptr)
+        {
+            const auto* row = static_cast<const float*>(locked.pBits) + (height / 2) * (locked.Pitch / sizeof(float));
+            const float centerDepth = row[width / 2];
+            _depthStagingSurface->UnlockRect();
+            LOG_INFO("INTZ depth readback OK ({}x{}) — center pixel depth = {:.6f}",
+                     width, height, centerDepth);
+        }
         else
-            LOG_WARN("Depth GetRenderTargetData failed: hr=0x{:08X} — likely needs INTZ/Nukem path",
-                     static_cast<uint32_t>(hr));
+        {
+            LOG_INFO("INTZ depth readback OK ({}x{}) — but LockRect failed: hr=0x{:08X}",
+                     width, height, static_cast<uint32_t>(lockHr));
+        }
     }
 }
 

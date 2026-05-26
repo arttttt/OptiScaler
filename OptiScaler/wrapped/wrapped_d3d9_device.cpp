@@ -19,6 +19,185 @@ WrappedIDirect3DDevice9Ex::WrappedIDirect3DDevice9Ex(IDirect3DDevice9* real, IDi
 WrappedIDirect3DDevice9Ex::~WrappedIDirect3DDevice9Ex()
 {
     InvalidateTrackedResources();
+
+    if (_depthCopyPS)
+    {
+        _depthCopyPS->Release();
+        _depthCopyPS = nullptr;
+    }
+}
+
+// Phase 3 INTZ c3: lazy-compile the pixel shader that samples an INTZ texture
+// and writes the depth value to an R32F render target. Uses D3DCompile from
+// d3dcompiler_47.dll loaded dynamically, so we don't have to link against it.
+// Sets _depthCopyPSFailed on compile failure to avoid retrying every frame.
+bool WrappedIDirect3DDevice9Ex::EnsureDepthCopyPS()
+{
+    if (_depthCopyPS)
+        return true;
+    if (_depthCopyPSFailed)
+        return false;
+
+    static const char* kHLSL =
+        "sampler2D depthSampler : register(s0);\n"
+        "float4 main(float2 uv : TEXCOORD0) : COLOR0\n"
+        "{\n"
+        "    return float4(tex2D(depthSampler, uv).x, 0, 0, 1);\n"
+        "}\n";
+
+    HMODULE d3dcompilerDll = LoadLibraryA("d3dcompiler_47.dll");
+    if (!d3dcompilerDll)
+    {
+        _depthCopyPSFailed = true;
+        LOG_ERROR("d3dcompiler_47.dll not loadable — INTZ depth-copy disabled");
+        return false;
+    }
+
+    using D3DCompile_pfn = HRESULT(WINAPI*)(LPCVOID, SIZE_T, LPCSTR, const void*, void*,
+                                            LPCSTR, LPCSTR, UINT, UINT,
+                                            ID3DBlob**, ID3DBlob**);
+    auto D3DCompile_fn = reinterpret_cast<D3DCompile_pfn>(GetProcAddress(d3dcompilerDll, "D3DCompile"));
+    if (!D3DCompile_fn)
+    {
+        FreeLibrary(d3dcompilerDll);
+        _depthCopyPSFailed = true;
+        LOG_ERROR("D3DCompile entry point missing — INTZ depth-copy disabled");
+        return false;
+    }
+
+    ID3DBlob* code = nullptr;
+    ID3DBlob* errors = nullptr;
+    const HRESULT hr = D3DCompile_fn(kHLSL, strlen(kHLSL), nullptr, nullptr, nullptr,
+                                     "main", "ps_2_0", 0, 0, &code, &errors);
+
+    if (FAILED(hr) || code == nullptr)
+    {
+        if (errors != nullptr)
+        {
+            LOG_ERROR("Depth-copy PS compile failed: {}",
+                      static_cast<const char*>(errors->GetBufferPointer()));
+            errors->Release();
+        }
+        else
+        {
+            LOG_ERROR("Depth-copy PS compile failed: hr=0x{:08X}", static_cast<uint32_t>(hr));
+        }
+        if (code) code->Release();
+        FreeLibrary(d3dcompilerDll);
+        _depthCopyPSFailed = true;
+        return false;
+    }
+
+    IDirect3DPixelShader9* ps = nullptr;
+    const HRESULT createHr = _real->CreatePixelShader(
+        static_cast<const DWORD*>(code->GetBufferPointer()), &ps);
+
+    code->Release();
+    if (errors) errors->Release();
+    FreeLibrary(d3dcompilerDll);
+
+    if (FAILED(createHr) || ps == nullptr)
+    {
+        LOG_ERROR("CreatePixelShader for depth-copy failed: hr=0x{:08X}",
+                  static_cast<uint32_t>(createHr));
+        _depthCopyPSFailed = true;
+        return false;
+    }
+
+    _depthCopyPS = ps;
+    LOG_INFO("INTZ depth-copy pixel shader ready (ps_2_0)");
+    return true;
+}
+
+// Phase 3 INTZ c3: lazy-create the R32F render target the copy pass writes to.
+// Sized to match the depth surface; recreated on Reset via InvalidateTrackedResources.
+bool WrappedIDirect3DDevice9Ex::EnsureDepthCopyRT(UINT width, UINT height)
+{
+    if (_depthCopyRT && _depthCopyRTSurface)
+        return true;
+
+    const HRESULT hr = _real->CreateTexture(
+        width, height, 1,
+        D3DUSAGE_RENDERTARGET,
+        D3DFMT_R32F,
+        D3DPOOL_DEFAULT,
+        &_depthCopyRT,
+        nullptr);
+
+    if (FAILED(hr) || _depthCopyRT == nullptr)
+    {
+        LOG_ERROR("Depth-copy R32F RT CreateTexture failed: hr=0x{:08X}",
+                  static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    const HRESULT slHr = _depthCopyRT->GetSurfaceLevel(0, &_depthCopyRTSurface);
+    if (FAILED(slHr) || _depthCopyRTSurface == nullptr)
+    {
+        LOG_ERROR("Depth-copy RT GetSurfaceLevel failed: hr=0x{:08X}",
+                  static_cast<uint32_t>(slHr));
+        _depthCopyRT->Release();
+        _depthCopyRT = nullptr;
+        return false;
+    }
+
+    LOG_INFO("INTZ depth-copy R32F RT ready ({}x{})", width, height);
+    return true;
+}
+
+// Phase 3 INTZ c3: build a static pre-transformed (XYZRHW) quad covering the
+// full target. Pre-transformed means no vertex shader is needed; we render
+// directly in pixel coordinates. Half-pixel offset matches the DX9 texel/pixel
+// rasterisation rule so the sampled depth lines up 1:1 with the source.
+bool WrappedIDirect3DDevice9Ex::EnsureDepthCopyVB(UINT width, UINT height)
+{
+    if (_depthCopyVB)
+        return true;
+
+    struct QuadVertex
+    {
+        float x, y, z, rhw;
+        float u, v;
+    };
+
+    const float w = static_cast<float>(width);
+    const float h = static_cast<float>(height);
+    const QuadVertex verts[4] = {
+        { -0.5f,       -0.5f,       0.0f, 1.0f, 0.0f, 0.0f },
+        {  w - 0.5f,   -0.5f,       0.0f, 1.0f, 1.0f, 0.0f },
+        { -0.5f,        h - 0.5f,   0.0f, 1.0f, 0.0f, 1.0f },
+        {  w - 0.5f,    h - 0.5f,   0.0f, 1.0f, 1.0f, 1.0f },
+    };
+
+    const HRESULT hr = _real->CreateVertexBuffer(
+        sizeof(verts),
+        D3DUSAGE_WRITEONLY,
+        D3DFVF_XYZRHW | D3DFVF_TEX1,
+        D3DPOOL_DEFAULT,
+        &_depthCopyVB,
+        nullptr);
+
+    if (FAILED(hr) || _depthCopyVB == nullptr)
+    {
+        LOG_ERROR("Depth-copy VB CreateVertexBuffer failed: hr=0x{:08X}",
+                  static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    void* dst = nullptr;
+    const HRESULT lockHr = _depthCopyVB->Lock(0, 0, &dst, 0);
+    if (FAILED(lockHr) || dst == nullptr)
+    {
+        LOG_ERROR("Depth-copy VB Lock failed: hr=0x{:08X}", static_cast<uint32_t>(lockHr));
+        _depthCopyVB->Release();
+        _depthCopyVB = nullptr;
+        return false;
+    }
+
+    memcpy(dst, verts, sizeof(verts));
+    _depthCopyVB->Unlock();
+
+    return true;
 }
 
 // Phase 3 INTZ c1: ask the driver which sampleable-depth FourCC formats it
@@ -87,6 +266,24 @@ void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
         _intzDepthTexture = nullptr;
     }
     _loggedIntzCreation = false;
+
+    if (_depthCopyRTSurface)
+    {
+        _depthCopyRTSurface->Release();
+        _depthCopyRTSurface = nullptr;
+    }
+    if (_depthCopyRT)
+    {
+        _depthCopyRT->Release();
+        _depthCopyRT = nullptr;
+    }
+    if (_depthCopyVB)
+    {
+        _depthCopyVB->Release();
+        _depthCopyVB = nullptr;
+    }
+    // _depthCopyPS survives Reset — it's a compiled pixel shader, no GPU resources
+    // tied to surface dims. Only freed in the destructor.
 }
 
 // Phase 7 probe: scan a vertex-shader constant-buffer upload for a 4x4 block

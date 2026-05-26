@@ -155,6 +155,9 @@ private:
     void AttemptDepthReadback();
     void ProbeForProjectionMatrix(UINT startRegister, const float* data, UINT vector4fCount);
     void QuerySampleableDepthFormats();
+    bool EnsureDepthCopyPS();
+    bool EnsureDepthCopyRT(UINT width, UINT height);
+    bool EnsureDepthCopyVB(UINT width, UINT height);
 
 
     IDirect3DDevice9* _real = nullptr;
@@ -209,4 +212,19 @@ private:
     // its surface, and so we can sample it later in the copy pass.
     IDirect3DTexture9* _intzDepthTexture = nullptr;
     bool _loggedIntzCreation = false;
+
+    // Phase 3 INTZ copy pass: R32F render target the depth-copy pixel shader
+    // writes to (DEFAULT pool, RENDERTARGET usage). Lazily created on first
+    // readback; recreated on Reset.
+    IDirect3DTexture9* _depthCopyRT = nullptr;
+    IDirect3DSurface9* _depthCopyRTSurface = nullptr;
+
+    // Pixel shader that samples INTZ depth and writes R32F. Compiled at runtime
+    // via d3dcompiler_47.dll on first readback.
+    IDirect3DPixelShader9* _depthCopyPS = nullptr;
+    bool _depthCopyPSFailed = false;
+
+    // Static fullscreen quad geometry (4 pre-transformed vertices, FVF).
+    // Recreated on Reset because dimensions are baked in.
+    IDirect3DVertexBuffer9* _depthCopyVB = nullptr;
 };

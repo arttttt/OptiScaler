@@ -184,6 +184,8 @@ private:
     void LogTopDepthStats();
     void ReleaseDepthStatsMap();
     void IdentifySceneDepth();
+    void ReleaseIntzMap();
+    IDirect3DTexture9* IntzTextureFor(IDirect3DSurface9* surface) const;
 
 
     IDirect3DDevice9* _real = nullptr;
@@ -250,10 +252,12 @@ private:
     bool _df24Supported = false;
     bool _df16Supported = false;
 
-    // Phase 3 INTZ: the texture backing the depth-stencil surface we returned
-    // to the game. We hold this ref so the texture survives if the game releases
-    // its surface, and so we can sample it later in the copy pass.
-    IDirect3DTexture9* _intzDepthTexture = nullptr;
+    // Phase 3 INTZ: surface -> INTZ texture container map. Every time we
+    // substitute an INTZ-backed surface in CreateDepthStencilSurface(Ex), we
+    // record the (surface, texture) pair here so the readback path can look
+    // up "which texture do I sample for this depth surface". We hold a ref on
+    // the texture for as long as the entry lives.
+    std::unordered_map<IDirect3DSurface9*, IDirect3DTexture9*> _intzTextureBySurface;
     bool _loggedIntzCreation = false;
 
     // Phase 3 INTZ copy pass: R32F render target the depth-copy pixel shader

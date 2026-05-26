@@ -393,6 +393,24 @@ void WrappedIDirect3DDevice9Ex::ReleaseDepthStatsMap()
     _loggedDepthStatsSummary = false;
 }
 
+void WrappedIDirect3DDevice9Ex::ReleaseIntzMap()
+{
+    for (auto& kv : _intzTextureBySurface)
+    {
+        if (kv.second)
+            kv.second->Release();
+    }
+    _intzTextureBySurface.clear();
+}
+
+IDirect3DTexture9* WrappedIDirect3DDevice9Ex::IntzTextureFor(IDirect3DSurface9* surface) const
+{
+    if (!surface)
+        return nullptr;
+    auto it = _intzTextureBySurface.find(surface);
+    return it != _intzTextureBySurface.end() ? it->second : nullptr;
+}
+
 // Phase 3 Mark 2 c2: score every tracked depth surface against the ReShade
 // heuristic and pick the winner. Called once per Present.
 //
@@ -493,11 +511,7 @@ void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
     _loggedReadbackSkip = false;
     _loggedReadbackResult = false;
 
-    if (_intzDepthTexture)
-    {
-        _intzDepthTexture->Release();
-        _intzDepthTexture = nullptr;
-    }
+    ReleaseIntzMap();
     _loggedIntzCreation = false;
 
     if (_depthCopyRTSurface)
@@ -590,10 +604,11 @@ void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
         return;
     }
 
-    // Without an INTZ-backed texture we have nothing to sample. This branch
-    // hits when the game requested a non-D24 depth format (e.g. D16) and we
-    // didn't intercept its creation.
-    if (!_intzDepthTexture)
+    // Without an INTZ-backed texture for this surface we have nothing to sample.
+    // This branch hits when the game's depth surface wasn't intercepted
+    // (different format, MSAA, or created before our wrapper was active).
+    IDirect3DTexture9* intzTex = IntzTextureFor(_trackedDepthSurface);
+    if (!intzTex)
     {
         if (!_loggedReadbackSkip)
         {
@@ -632,7 +647,7 @@ void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
     _real->SetFVF(D3DFVF_XYZRHW | D3DFVF_TEX1);
     _real->SetStreamSource(0, _depthCopyVB, 0, sizeof(float) * 6);
 
-    _real->SetTexture(0, _intzDepthTexture);
+    _real->SetTexture(0, intzTex);
     _real->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
     _real->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
     _real->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
@@ -954,9 +969,9 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateDepthStencilSurface(U
 
             if (SUCCEEDED(hr) && intzSurf != nullptr)
             {
-                if (_intzDepthTexture)
-                    _intzDepthTexture->Release();
-                _intzDepthTexture = intzTex; // keep our ref
+                // Record (surface, texture) so the readback path can look
+                // up which INTZ-backed texture to sample for this surface.
+                _intzTextureBySurface[intzSurf] = intzTex; // we own the texture ref
 
                 // Force-update tracking to this INTZ surface. Same-size
                 // replacement is skipped by the area heuristic in
@@ -1714,9 +1729,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateDepthStencilSurfaceEx
 
             if (SUCCEEDED(hr) && intzSurf != nullptr)
             {
-                if (_intzDepthTexture)
-                    _intzDepthTexture->Release();
-                _intzDepthTexture = intzTex;
+                _intzTextureBySurface[intzSurf] = intzTex; // we own the texture ref
 
                 if (_trackedDepthSurface)
                     _trackedDepthSurface->Release();

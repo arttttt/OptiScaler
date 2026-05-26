@@ -20,6 +20,7 @@
 #include <fsr4/FSR4Upgrade.h>
 #include <misc/IdentifyGpu.h>
 #include <nvapi/NvApiTypes.h>
+#include <menu/menu_dx_base.h>
 #include <menu/menu_dx12.h>
 #include <inputs/FSR2_Dx11.h>
 #include <inputs/FSR2_Dx12.h>
@@ -63,7 +64,8 @@ std::vector<std::filesystem::path> GetDriverStore() { return {}; }
 GpuInformation IdentifyGpu::getPrimaryGpu() { return GpuInformation {}; }
 std::vector<GpuInformation> IdentifyGpu::getAllGpus() { return {}; }
 
-// nvapi/NvApiTypes
+// nvapi/NvApiTypes - constructor body lives in excluded NvApiTypes.cpp
+NvApiTypes::NvApiTypes() {}
 NvApiTypes& NvApiTypes::Instance()
 {
     static NvApiTypes instance;
@@ -71,7 +73,9 @@ NvApiTypes& NvApiTypes::Instance()
 }
 unsigned int NvApiTypes::getId(const std::string&) const { return 0; }
 
-// menu/menu_dx12
+// menu/* - Menu_Dx12 inherits MenuDxBase whose dtor is also in an
+// excluded .cpp; provide both to satisfy the vtable.
+MenuDxBase::~MenuDxBase() {}
 Menu_Dx12::~Menu_Dx12() {}
 
 // inputs/*

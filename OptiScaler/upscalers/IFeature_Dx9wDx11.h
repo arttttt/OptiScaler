@@ -81,11 +81,15 @@ class IFeature_Dx9wDx11
     // CopyResource and before DX9 reads back.
     IDirect3DQuery9* _eventQuery = nullptr;
 
-    // 5b: optional sharpen pass. Replaces the 5a CopyResource — runs a
-    // tiny unsharp-mask CS into its own UAV-bound output, which we then
-    // CopyResource into _sharedOutTex11 (shared resources can't be UAVs
-    // because DX9 has no equivalent bind flag). Owned by unique_ptr so
-    // including the full Sharpen_Dx11 header stays out of consumers.
+    // 5b unblocked path: instead of running a CS that needs a typed UAV on
+    // the backbuffer's format (B8G8R8X8 trips driver/debug-layer asserts on
+    // most hardware), the visible-proof mode just ClearRenderTargetView's
+    // _sharedOutTex11 with a bright color. RTV on a RENDERTARGET-bound
+    // shared texture works on every adapter we care about.
+    ID3D11RenderTargetView* _sharedOutRtv = nullptr;
+
+    // 5b: sharpen pass kept around in tree for the PS-based rewrite that
+    // will replace the clear-to-red proof. Currently not constructed.
     std::unique_ptr<Sharpen_Dx11> _sharpen;
 
     bool _loggedRoundtripOk = false;

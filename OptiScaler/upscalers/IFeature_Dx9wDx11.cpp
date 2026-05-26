@@ -73,23 +73,23 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
         return false;
     }
 
-    // 5b: lazily try to stand up the sharpen pass. Failure here is non-fatal:
-    // the bridge falls back to the 5a CopyResource path so the round-trip
-    // still proves out even if the shader compile breaks on a weird driver.
-    const DXGI_FORMAT sharpenFormat = MapD3D9FormatToDxgi(_gameFormat);
-    if (sharpenFormat != DXGI_FORMAT_UNKNOWN)
+    // 5b: RTV on the shared output, used by the debug clear-to-red path.
+    // RT bind flag is inherited from D3DUSAGE_RENDERTARGET on the DX9 side
+    // so this view creation is the most boring possible operation.
+    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+    rtvDesc.Format = MapD3D9FormatToDxgi(_gameFormat);
+    rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+    HRESULT rtvHr = _dx11Device->CreateRenderTargetView(_sharedOutTex11, &rtvDesc, &_sharedOutRtv);
+    if (FAILED(rtvHr))
     {
-        _sharpen = std::make_unique<Sharpen_Dx11>("Sharpen", _dx11Device);
-        if (!_sharpen->IsInit() || !_sharpen->CreateBufferResource(_dx11Device, _width, _height, sharpenFormat))
-        {
-            LOG_WARN("Dx9wDx11: sharpen pass init failed — falling back to CopyResource");
-            _sharpen.reset();
-        }
+        LOG_WARN("Dx9wDx11: shared-out RTV creation failed hr=0x{:08X} — debug clear disabled",
+                 static_cast<uint32_t>(rtvHr));
+        _sharedOutRtv = nullptr;
     }
 
     _init = true;
-    LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X}, sharpen={})", _width, _height,
-             static_cast<uint32_t>(_gameFormat), _sharpen != nullptr ? "on" : "off");
+    LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X}, rtv={})", _width, _height,
+             static_cast<uint32_t>(_gameFormat), _sharedOutRtv != nullptr ? "ok" : "none");
     return true;
 }
 
@@ -209,16 +209,15 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer)
     if (!WaitGpuDx9())
         return false;
 
-    // 3. DX11: either sharpen pass (5b) or trivial in->out copy (5a fallback).
-    // Both terminate in _sharedOutTex11 ready for the back-StretchRect.
-    if (_sharpen && _sharpen->CanRender())
+    // 3. DX11 work. In debug mode (Dx9TAA_BridgeDebug=true), clear the
+    // shared output to bright red — impossible to miss visually. Otherwise,
+    // round-trip via CopyResource so the bridge proves alive without
+    // perturbing the image. Both end with _sharedOutTex11 ready for the
+    // back-StretchRect.
+    if (Config::Instance()->Dx9TAA_BridgeDebug.value_or_default() && _sharedOutRtv != nullptr)
     {
-        const float sharpness = Config::Instance()->Dx9TAA_Sharpness.value_or_default();
-        const int   debugMode = Config::Instance()->Dx9TAA_BridgeDebug.value_or_default() ? 1 : 0;
-        if (_sharpen->Dispatch(_dx11Device, _dx11Context, _sharedInTex11, sharpness, debugMode))
-            _dx11Context->CopyResource(_sharedOutTex11, _sharpen->Output());
-        else
-            _dx11Context->CopyResource(_sharedOutTex11, _sharedInTex11);
+        const float red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
+        _dx11Context->ClearRenderTargetView(_sharedOutRtv, red);
     }
     else
     {
@@ -256,6 +255,7 @@ void IFeature_Dx9wDx11::ReleaseAll()
 
     _sharpen.reset();
 
+    safeRelease(_sharedOutRtv);
     safeRelease(_eventQuery);
     safeRelease(_sharedInSurf9);
     safeRelease(_sharedInTex9);

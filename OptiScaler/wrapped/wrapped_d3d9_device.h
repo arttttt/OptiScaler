@@ -257,6 +257,10 @@ private:
     int _projectionMatchCount = 0;
     bool _loggedFirstFrameVSStats = false;
 
+    // Phase 7a: how many VS bytecode blobs we've already analyzed for oPos
+    // writes. Capped to keep logs readable.
+    int _vsAnalyzed = 0;
+
     // Phase 3 Mark 2: per-depth-surface activity tracking (ReShade-style).
     // Each surface bound as depth-stencil gets an entry; Draw* methods bump its
     // counters. A separate mutex protects the map because D3D9 with

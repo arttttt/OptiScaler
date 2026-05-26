@@ -1,6 +1,7 @@
 #include <pch.h>
 #include "wrapped_d3d9_device.h"
 
+#include "misc/Dxbc_VsPatcher.h"
 #include "misc/HaltonSequence.h"
 #include "upscalers/IFeature_Dx9wDx11.h"
 #include "wrapped_d3d9_depthstencil.h"
@@ -1693,6 +1694,17 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetFVF(DWORD* pFVF)
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateVertexShader(CONST DWORD* pFunction, IDirect3DVertexShader9** ppShader)
 {
+    // Phase 7a: log oPos writes for the first handful of VS bytecode blobs
+    // the game compiles. Capped to avoid spam — first 5 shaders is plenty
+    // for a "do we know where to inject?" diagnostic.
+    if (Config::Instance()->Dx9TAA.value_or_default() && pFunction != nullptr && _vsAnalyzed < 5)
+    {
+        char tag[16];
+        std::snprintf(tag, sizeof(tag), "VS#%d", _vsAnalyzed);
+        DxbcVsPatcher::Analyze(pFunction, tag);
+        _vsAnalyzed++;
+    }
+
     return _real->CreateVertexShader(pFunction, ppShader);
 }
 

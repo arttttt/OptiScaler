@@ -545,6 +545,13 @@ void WrappedIDirect3DDevice9Ex::IdentifySceneDepth()
     {
         IDirect3DSurface9* prev = _identifiedSceneDepth;
         _identifiedSceneDepth = winner;
+        _identifiedSceneDepthStats = winner ? winnerStats : DepthSurfaceStats{};
+
+        // Re-arm the readback gates so the next attempt reports the outcome
+        // against the new surface.
+        _loggedReadbackSkip = false;
+        _loggedReadbackResult = false;
+
         if (winner)
         {
             LOG_INFO("Identified scene depth surface: {} {}x{} fmt=0x{:X} MS={} draws={} verts={}",
@@ -558,6 +565,12 @@ void WrappedIDirect3DDevice9Ex::IdentifySceneDepth()
         {
             LOG_INFO("Lost previously identified scene depth surface (no candidate this frame)");
         }
+    }
+    else if (winner)
+    {
+        // Refresh cached stats even when the surface is unchanged — width may
+        // be the same but draw counts evolve frame-to-frame.
+        _identifiedSceneDepthStats = winnerStats;
     }
 }
 
@@ -583,6 +596,7 @@ void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
     _loggedReadbackResult = false;
 
     ReleaseIntzMap();
+    _identifiedSceneDepthStats = {};
     _loggedIntzCreation = false;
 
     if (_depthCopyRTSurface)
@@ -657,41 +671,57 @@ void WrappedIDirect3DDevice9Ex::ProbeForProjectionMatrix(UINT startRegister, con
 
 void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
 {
-    if (!_trackedDepthSurface)
-        return;
+    // Phase 3 Mark 2 c5: prefer the surface identified by ReShade-style
+    // scoring; fall back to Mark 1's area-based tracker if no scoring result
+    // is available yet (first few frames before activity accumulates).
+    IDirect3DSurface9* sourceSurface = _identifiedSceneDepth ? _identifiedSceneDepth : _trackedDepthSurface;
+    UINT width = 0, height = 0;
+    D3DFORMAT sourceFormat = D3DFMT_UNKNOWN;
+    D3DMULTISAMPLE_TYPE sourceMS = D3DMULTISAMPLE_NONE;
 
-    // MSAA tracked depth means our INTZ substitution didn't apply (we only
-    // intercept non-MSAA creation), so we can't sample it directly. Out of
-    // scope for Phase 3 MVP.
-    if (_trackedDepthDesc.MultiSampleType != D3DMULTISAMPLE_NONE)
+    if (_identifiedSceneDepth)
+    {
+        width = _identifiedSceneDepthStats.width;
+        height = _identifiedSceneDepthStats.height;
+        sourceFormat = _identifiedSceneDepthStats.format;
+        sourceMS = _identifiedSceneDepthStats.multisample;
+    }
+    else if (_trackedDepthSurface)
+    {
+        width = _trackedDepthDesc.Width;
+        height = _trackedDepthDesc.Height;
+        sourceFormat = _trackedDepthDesc.Format;
+        sourceMS = _trackedDepthDesc.MultiSampleType;
+    }
+    else
+    {
+        return;
+    }
+
+    if (sourceMS != D3DMULTISAMPLE_NONE)
     {
         if (!_loggedReadbackSkip)
         {
             _loggedReadbackSkip = true;
             LOG_WARN("Depth readback skipped: MSAA depth surface ({}x{} samples={})",
-                     _trackedDepthDesc.Width, _trackedDepthDesc.Height,
-                     static_cast<int>(_trackedDepthDesc.MultiSampleType));
+                     width, height, static_cast<int>(sourceMS));
         }
         return;
     }
 
     // Without an INTZ-backed texture for this surface we have nothing to sample.
-    // This branch hits when the game's depth surface wasn't intercepted
-    // (different format, MSAA, or created before our wrapper was active).
-    IDirect3DTexture9* intzTex = IntzTextureFor(_trackedDepthSurface);
+    IDirect3DTexture9* intzTex = IntzTextureFor(sourceSurface);
     if (!intzTex)
     {
         if (!_loggedReadbackSkip)
         {
             _loggedReadbackSkip = true;
-            LOG_WARN("Depth readback skipped: tracked surface is not INTZ-backed (format=0x{:X})",
-                     static_cast<uint32_t>(_trackedDepthDesc.Format));
+            LOG_WARN("Depth readback skipped: source surface {} is not INTZ-backed (format=0x{:X})",
+                     static_cast<const void*>(sourceSurface),
+                     static_cast<uint32_t>(sourceFormat));
         }
         return;
     }
-
-    const UINT width = _trackedDepthDesc.Width;
-    const UINT height = _trackedDepthDesc.Height;
 
     if (!EnsureDepthCopyPS() || !EnsureDepthCopyRT(width, height) || !EnsureDepthCopyVB(width, height))
         return; // helpers already logged the specific failure

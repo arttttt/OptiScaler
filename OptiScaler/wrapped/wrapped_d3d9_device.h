@@ -249,6 +249,7 @@ private:
     // The map owns the underlying ref; this is a non-owning observer pointer
     // and is nulled in ReleaseDepthStatsMap so it never dangles.
     IDirect3DSurface9* _identifiedSceneDepth = nullptr;
+    DepthSurfaceStats _identifiedSceneDepthStats = {};
 
     // Phase 3 INTZ: which sampleable-depth FourCC formats the adapter supports.
     // Populated once in the constructor via CheckDeviceFormat.

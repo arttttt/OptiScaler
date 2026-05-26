@@ -277,6 +277,15 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::BeginScene()
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::EndScene()
 {
+    if (Config::Instance()->Dx9TAA.value_or_default())
+    {
+        // Flashing 16x16 square in the top-left corner: cycles R/G/B per frame
+        // so the user can confirm the Dx9TAA path is live without reading the log.
+        const D3DRECT indicator = { 8, 8, 24, 24 };
+        const D3DCOLOR colors[3] = { D3DCOLOR_XRGB(255, 0, 0), D3DCOLOR_XRGB(0, 255, 0), D3DCOLOR_XRGB(0, 0, 255) };
+        _real->Clear(1, &indicator, D3DCLEAR_TARGET, colors[_frameIndex % 3], 0.0f, 0);
+    }
+
     return _real->EndScene();
 }
 

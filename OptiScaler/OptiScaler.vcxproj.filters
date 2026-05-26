@@ -161,6 +161,9 @@
     <ClInclude Include="hooks\Vulkan_Hooks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="wrapped\wrapped_d3d9_device.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="wrapped\wrapped_swapchain.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -377,6 +380,9 @@
     <ClInclude Include="DllNames.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="proxies\D3D9_Proxy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="proxies\D3D12_Proxy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -402,6 +408,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="exports\dxgi.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="exports\d3d9.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="exports\d3d12.h">
@@ -566,6 +575,9 @@
     <ClInclude Include="proxies\Ntdll_Proxy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="wrapped\wrapped_d3d9.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="wrapped\wrapped_factory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -579,6 +591,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="upscaler_time\UpscalerTime_Dx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hooks\D3D9_Hooks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="hooks\D3D12_Hooks.h">
@@ -947,6 +962,9 @@
     <ClCompile Include="hooks\Vulkan_Hooks.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="wrapped\wrapped_d3d9_device.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="wrapped\wrapped_swapchain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1136,6 +1154,9 @@
     <ClCompile Include="fsr4\FSR4Upgrade.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="wrapped\wrapped_d3d9.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="wrapped\wrapped_factory.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1152,6 +1173,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="upscaler_time\UpscalerTime_Dx11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hooks\D3D9_Hooks.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="hooks\D3D12_Hooks.cpp">

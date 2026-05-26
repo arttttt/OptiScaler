@@ -303,6 +303,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="DllNames.h" />
+    <ClInclude Include="exports\d3d9.h" />
     <ClInclude Include="exports\d3d12.h" />
     <ClInclude Include="exports\dbghelp.h" />
     <ClInclude Include="exports\dxgi.h" />
@@ -317,6 +318,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="framegen\IFGFeature.h" />
     <ClInclude Include="framegen\IFGFeature_Dx12.h" />
     <ClInclude Include="fsr4\FSR4ModelSelection.h" />
+    <ClInclude Include="hooks\D3D9_Hooks.h" />
     <ClInclude Include="hooks\D3D12_Hooks.h" />
     <ClInclude Include="hooks\DxgiFactory_Hooks.h" />
     <ClInclude Include="hooks\DxgiFactory_WrappedCalls.h" />
@@ -396,6 +398,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="upscaler_time\UpscalerTime_Dx12.h" />
     <ClInclude Include="upscaler_time\UpscalerTime_Vk.h" />
     <ClInclude Include="SysUtils.h" />
+    <ClInclude Include="wrapped\wrapped_d3d9.h" />
     <ClInclude Include="wrapped\wrapped_factory.h" />
     <ClInclude Include="include\spdlog_sink\debug_sink.h" />
     <ClInclude Include="inputs\FG\FSR3_Dx12_FG.h" />
@@ -430,6 +433,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="misc\FrameLimit.h" />
     <ClInclude Include="misc\Quirks.h" />
     <ClInclude Include="OwnedMutex.h" />
+    <ClInclude Include="proxies\D3D9_Proxy.h" />
     <ClInclude Include="proxies\D3D12_Proxy.h" />
     <ClInclude Include="proxies\Dxgi_Proxy.h" />
     <ClInclude Include="proxies\IGDExt_Proxy.h" />
@@ -512,6 +516,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="menu\menu_overlay_base.h" />
     <ClInclude Include="menu\menu_overlay_dx.h" />
     <ClInclude Include="menu\menu_overlay_vk.h" />
+    <ClInclude Include="wrapped\wrapped_d3d9_device.h" />
     <ClInclude Include="wrapped\wrapped_swapchain.h" />
     <ClInclude Include="Logger.h" />
     <ClInclude Include="NVNGX_Parameter.h" />
@@ -565,6 +570,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
     <ClCompile Include="fsr4\FSR4ModelSelection.cpp" />
     <ClCompile Include="fsr4\FSR4Upgrade.cpp" />
+    <ClCompile Include="hooks\D3D9_Hooks.cpp" />
     <ClCompile Include="hooks\D3D12_Hooks.cpp" />
     <ClCompile Include="hooks\DxgiFactory_Hooks.cpp" />
     <ClCompile Include="hooks\DxgiFactory_WrappedCalls.cpp" />
@@ -614,6 +620,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="upscaler_time\UpscalerTime_Dx11.cpp" />
     <ClCompile Include="upscaler_time\UpscalerTime_Dx12.cpp" />
     <ClCompile Include="upscaler_time\UpscalerTime_Vk.cpp" />
+    <ClCompile Include="wrapped\wrapped_d3d9.cpp" />
     <ClCompile Include="wrapped\wrapped_factory.cpp" />
     <ClCompile Include="inputs\FG\FSR3_Dx12_FG.cpp" />
     <ClCompile Include="inputs\FG\Streamline_Inputs_Dx12.cpp" />
@@ -711,6 +718,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="menu\menu_overlay_base.cpp" />
     <ClCompile Include="menu\menu_overlay_dx.cpp" />
     <ClCompile Include="menu\menu_overlay_vk.cpp" />
+    <ClCompile Include="wrapped\wrapped_d3d9_device.cpp" />
     <ClCompile Include="wrapped\wrapped_swapchain.cpp" />
     <ClCompile Include="include\imgui\imgui.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>

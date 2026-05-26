@@ -264,8 +264,138 @@ void WrappedIDirect3DDevice9Ex::QuerySampleableDepthFormats()
     d3d9->Release();
 }
 
+// Phase 3 Mark 2 helpers ====================================================
+
+static int VerticesFromPrimitiveCount(D3DPRIMITIVETYPE primType, UINT primCount)
+{
+    switch (primType)
+    {
+    case D3DPT_POINTLIST:     return static_cast<int>(primCount);
+    case D3DPT_LINELIST:      return static_cast<int>(primCount * 2);
+    case D3DPT_LINESTRIP:     return static_cast<int>(primCount + 1);
+    case D3DPT_TRIANGLELIST:  return static_cast<int>(primCount * 3);
+    case D3DPT_TRIANGLESTRIP: return static_cast<int>(primCount + 2);
+    case D3DPT_TRIANGLEFAN:   return static_cast<int>(primCount + 2);
+    default:                  return 0;
+    }
+}
+
+void WrappedIDirect3DDevice9Ex::RegisterDepthSurfaceForStats(IDirect3DSurface9* surface)
+{
+    if (surface == nullptr)
+    {
+        _currentDepthForStats = nullptr;
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(_depthStatsMutex);
+    auto it = _depthStats.find(surface);
+    if (it == _depthStats.end())
+    {
+        DepthSurfaceStats stats = {};
+        D3DSURFACE_DESC desc = {};
+        if (SUCCEEDED(surface->GetDesc(&desc)))
+        {
+            stats.width = desc.Width;
+            stats.height = desc.Height;
+            stats.format = desc.Format;
+            stats.multisample = desc.MultiSampleType;
+        }
+        surface->AddRef();
+        _depthStats.emplace(surface, stats);
+    }
+    _currentDepthForStats = surface;
+}
+
+void WrappedIDirect3DDevice9Ex::AccumulateDrawStats(D3DPRIMITIVETYPE primType, UINT primCount, UINT verticesOverride)
+{
+    if (_currentDepthForStats == nullptr)
+        return;
+
+    const int verts = verticesOverride > 0
+                          ? static_cast<int>(verticesOverride)
+                          : VerticesFromPrimitiveCount(primType, primCount);
+
+    std::lock_guard<std::mutex> lock(_depthStatsMutex);
+    auto it = _depthStats.find(_currentDepthForStats);
+    if (it == _depthStats.end())
+        return;
+
+    it->second.vertices += verts;
+    it->second.drawcalls += 1;
+    it->second.last_used_frame = _frameIndex;
+}
+
+void WrappedIDirect3DDevice9Ex::ResetDepthStatsForCurrentZ()
+{
+    if (_currentDepthForStats == nullptr)
+        return;
+
+    std::lock_guard<std::mutex> lock(_depthStatsMutex);
+    auto it = _depthStats.find(_currentDepthForStats);
+    if (it == _depthStats.end())
+        return;
+
+    it->second.vertices = 0;
+    it->second.drawcalls = 0;
+    it->second.drawcalls_indirect = 0;
+}
+
+void WrappedIDirect3DDevice9Ex::LogTopDepthStats()
+{
+    if (_loggedDepthStatsSummary)
+        return;
+
+    std::lock_guard<std::mutex> lock(_depthStatsMutex);
+
+    struct Sample { IDirect3DSurface9* surface; DepthSurfaceStats stats; };
+    std::vector<Sample> samples;
+    samples.reserve(_depthStats.size());
+    for (const auto& kv : _depthStats)
+    {
+        if (kv.second.vertices > 0)
+            samples.push_back({ kv.first, kv.second });
+    }
+    if (samples.empty())
+        return;
+
+    std::sort(samples.begin(), samples.end(), [](const Sample& a, const Sample& b) {
+        return a.stats.vertices > b.stats.vertices;
+    });
+
+    _loggedDepthStatsSummary = true;
+
+    const size_t n = std::min<size_t>(samples.size(), 3);
+    LOG_INFO("Phase 3 Mark 2: top {} depth surfaces by vertex count after first activity:", n);
+    for (size_t i = 0; i < n; ++i)
+    {
+        const auto& s = samples[i];
+        LOG_INFO("  #{} surface={} {}x{} fmt=0x{:X} MS={} draws={} verts={} lastFrame={}",
+                 i + 1, static_cast<const void*>(s.surface),
+                 s.stats.width, s.stats.height,
+                 static_cast<uint32_t>(s.stats.format),
+                 static_cast<int>(s.stats.multisample),
+                 s.stats.drawcalls, s.stats.vertices, s.stats.last_used_frame);
+    }
+}
+
+void WrappedIDirect3DDevice9Ex::ReleaseDepthStatsMap()
+{
+    std::lock_guard<std::mutex> lock(_depthStatsMutex);
+    for (auto& kv : _depthStats)
+    {
+        if (kv.first)
+            kv.first->Release();
+    }
+    _depthStats.clear();
+    _currentDepthForStats = nullptr;
+    _loggedDepthStatsSummary = false;
+}
+
 void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
 {
+    ReleaseDepthStatsMap();
+
     if (_trackedDepthSurface)
     {
         _trackedDepthSurface->Release();
@@ -650,6 +780,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
         }
         _vsConstCallsThisFrame = 0;
 
+        LogTopDepthStats();
         AttemptDepthReadback();
     }
 
@@ -835,6 +966,10 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetRenderTarget(DWORD Rende
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetDepthStencilSurface(IDirect3DSurface9* pNewZStencil)
 {
+    // Phase 3 Mark 2: register/update the stats entry and mark it current so
+    // subsequent Draw* calls accumulate against it.
+    RegisterDepthSurfaceForStats(pNewZStencil);
+
     if (pNewZStencil)
     {
         D3DSURFACE_DESC desc = {};
@@ -842,8 +977,8 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetDepthStencilSurface(IDir
         {
             const UINT area = desc.Width * desc.Height;
 
-            // Filter: only consider depth surfaces matching backbuffer dimensions.
-            // Skips shadow maps, post-process depth copies, etc.
+            // Mark 1 area-based tracking — kept for now; Mark 2 scoring (commit 2)
+            // will replace it as the source of _trackedDepthSurface.
             const bool matchesBackbuffer =
                 _presentParams.BackBufferWidth > 0 &&
                 desc.Width == _presentParams.BackBufferWidth &&
@@ -909,6 +1044,10 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::EndScene()
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Clear(DWORD Count, CONST D3DRECT* pRects, DWORD Flags, D3DCOLOR Color, float Z, DWORD Stencil)
 {
+    // Phase 3 Mark 2: clearing Z is the end-of-scene boundary for our stats.
+    if (Flags & D3DCLEAR_ZBUFFER)
+        ResetDepthStatsForCurrentZ();
+
     return _real->Clear(Count, pRects, Flags, Color, Z, Stencil);
 }
 
@@ -1147,21 +1286,25 @@ float STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetNPatchMode()
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount)
 {
+    AccumulateDrawStats(PrimitiveType, PrimitiveCount, 0);
     return _real->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::DrawIndexedPrimitive(D3DPRIMITIVETYPE PrimitiveType, INT BaseVertexIndex, UINT MinVertexIndex, UINT NumVertices, UINT startIndex, UINT primCount)
 {
+    AccumulateDrawStats(PrimitiveType, primCount, NumVertices);
     return _real->DrawIndexedPrimitive(PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, startIndex, primCount);
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, CONST void* pVertexStreamZeroData, UINT VertexStreamZeroStride)
 {
+    AccumulateDrawStats(PrimitiveType, PrimitiveCount, 0);
     return _real->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::DrawIndexedPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT MinVertexIndex, UINT NumVertices, UINT PrimitiveCount, CONST void* pIndexData, D3DFORMAT IndexDataFormat, CONST void* pVertexStreamZeroData, UINT VertexStreamZeroStride)
 {
+    AccumulateDrawStats(PrimitiveType, PrimitiveCount, NumVertices);
     return _real->DrawIndexedPrimitiveUP(PrimitiveType, MinVertexIndex, NumVertices, PrimitiveCount, pIndexData, IndexDataFormat, pVertexStreamZeroData, VertexStreamZeroStride);
 }
 
@@ -1376,6 +1519,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::PresentEx(CONST RECT* pSour
         }
         _vsConstCallsThisFrame = 0;
 
+        LogTopDepthStats();
         AttemptDepthReadback();
     }
 

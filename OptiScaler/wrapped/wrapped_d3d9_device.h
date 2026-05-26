@@ -168,4 +168,9 @@ private:
     // Forwarded to the upscaler in later phases.
     float _jitterX = 0.0f;
     float _jitterY = 0.0f;
+
+    // One-shot debug flags: log only the first hit of each path so the
+    // log proves the inject ran without spamming every frame.
+    bool _loggedProjectionJitter = false;
+    bool _loggedIndicatorDraw = false;
 };

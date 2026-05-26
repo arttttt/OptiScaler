@@ -283,7 +283,13 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::EndScene()
         // so the user can confirm the Dx9TAA path is live without reading the log.
         const D3DRECT indicator = { 8, 8, 24, 24 };
         const D3DCOLOR colors[3] = { D3DCOLOR_XRGB(255, 0, 0), D3DCOLOR_XRGB(0, 255, 0), D3DCOLOR_XRGB(0, 0, 255) };
-        _real->Clear(1, &indicator, D3DCLEAR_TARGET, colors[_frameIndex % 3], 0.0f, 0);
+        HRESULT hr = _real->Clear(1, &indicator, D3DCLEAR_TARGET, colors[_frameIndex % 3], 0.0f, 0);
+
+        if (!_loggedIndicatorDraw)
+        {
+            _loggedIndicatorDraw = true;
+            LOG_INFO("Dx9TAA: first indicator Clear, hr=0x{:08X}", static_cast<uint32_t>(hr));
+        }
     }
 
     return _real->EndScene();
@@ -324,6 +330,13 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetTransform(D3DTRANSFORMST
                     D3DMATRIX jittered = *pMatrix;
                     jittered._31 += clipX;
                     jittered._32 += clipY;
+
+                    if (!_loggedProjectionJitter)
+                    {
+                        _loggedProjectionJitter = true;
+                        LOG_INFO("Dx9TAA: first projection jitter applied (px=[{:.3f},{:.3f}], clip=[{:.6f},{:.6f}], backbuf={}x{})",
+                                 _jitterX, _jitterY, clipX, clipY, width, height);
+                    }
 
                     return _real->SetTransform(State, &jittered);
                 }

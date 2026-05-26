@@ -150,10 +150,6 @@ public:
 
     IDirect3DDevice9* GetReal() { return _real; }
 
-    // Called from WrappedIDirect3D9Ex::CreateDevice when the auto-depth
-    // surface was suppressed in favour of an INTZ texture we own.
-    void InitAutoDepthIntz(UINT width, UINT height);
-
 private:
     void InvalidateTrackedResources();
     void AttemptDepthReadback();

@@ -148,30 +148,6 @@ HMONITOR STDMETHODCALLTYPE WrappedIDirect3D9Ex::GetAdapterMonitor(UINT Adapter)
     return _real->GetAdapterMonitor(Adapter);
 }
 
-// Phase 3 INTZ: helper to decide if we should suppress auto-depth and create
-// our own INTZ-backed texture after device init. Centralised so CreateDevice
-// and CreateDeviceEx share the same eligibility rules.
-static bool ShouldSubstituteAutoDepth(IDirect3D9* d3d9, UINT adapter, D3DDEVTYPE deviceType,
-                                      const D3DPRESENT_PARAMETERS* pp)
-{
-    if (!Config::Instance()->Dx9TAA.value_or_default()) return false;
-    if (pp == nullptr) return false;
-    if (!pp->EnableAutoDepthStencil) return false;
-    if (pp->MultiSampleType != D3DMULTISAMPLE_NONE) return false;
-    if (pp->AutoDepthStencilFormat != D3DFMT_D24S8 &&
-        pp->AutoDepthStencilFormat != D3DFMT_D24X8)
-        return false;
-
-    D3DDISPLAYMODE mode = {};
-    if (FAILED(d3d9->GetAdapterDisplayMode(adapter, &mode))) return false;
-
-    const D3DFORMAT intzFormat = static_cast<D3DFORMAT>(MAKEFOURCC('I', 'N', 'T', 'Z'));
-    const HRESULT hr = d3d9->CheckDeviceFormat(
-        adapter, deviceType, mode.Format,
-        D3DUSAGE_DEPTHSTENCIL, D3DRTYPE_SURFACE, intzFormat);
-    return SUCCEEDED(hr);
-}
-
 HRESULT STDMETHODCALLTYPE WrappedIDirect3D9Ex::CreateDevice(UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow,
                                                              DWORD BehaviorFlags,
                                                              D3DPRESENT_PARAMETERS* pPresentationParameters,
@@ -183,27 +159,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3D9Ex::CreateDevice(UINT Adapter, D3DDEV
     // Force multithreaded for DX12 interop
     BehaviorFlags |= D3DCREATE_MULTITHREADED;
 
-    // Phase 3 INTZ: if eligible, suppress D3D9's implicit auto-depth so we
-    // can supply our own INTZ-backed (sampleable) one after the device exists.
-    D3DPRESENT_PARAMETERS originalParams = {};
-    bool autoDepthSubstituted = false;
-    if (ShouldSubstituteAutoDepth(_real, Adapter, DeviceType, pPresentationParameters))
-    {
-        originalParams = *pPresentationParameters;
-        pPresentationParameters->EnableAutoDepthStencil = FALSE;
-        autoDepthSubstituted = true;
-        LOG_INFO("Auto-depth suppressed for INTZ substitution (orig format=0x{:X}, MS={})",
-                 static_cast<uint32_t>(originalParams.AutoDepthStencilFormat),
-                 static_cast<int>(originalParams.MultiSampleType));
-    }
-
     HRESULT hr = _real->CreateDevice(Adapter, DeviceType, hFocusWindow, BehaviorFlags, pPresentationParameters,
                                       ppReturnedDeviceInterface);
 
     if (FAILED(hr) || ppReturnedDeviceInterface == nullptr || *ppReturnedDeviceInterface == nullptr)
     {
-        if (autoDepthSubstituted)
-            *pPresentationParameters = originalParams; // restore for caller's retry
         LOG_ERROR("CreateDevice failed: {:#x}", (unsigned long) hr);
         return hr;
     }
@@ -214,12 +174,6 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3D9Ex::CreateDevice(UINT Adapter, D3DDEV
 
     auto wrapped =
         new WrappedIDirect3DDevice9Ex(*ppReturnedDeviceInterface, deviceEx, hFocusWindow, pPresentationParameters);
-
-    if (autoDepthSubstituted)
-    {
-        wrapped->InitAutoDepthIntz(pPresentationParameters->BackBufferWidth,
-                                   pPresentationParameters->BackBufferHeight);
-    }
 
     State::Instance().currentD3D9Device = wrapped;
     State::Instance().swapchainApi = API::DX9;
@@ -272,26 +226,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3D9Ex::CreateDeviceEx(UINT Adapter, D3DD
     // Force multithreaded for DX12 interop
     BehaviorFlags |= D3DCREATE_MULTITHREADED;
 
-    // Phase 3 INTZ: same auto-depth substitution as the non-Ex path.
-    D3DPRESENT_PARAMETERS originalParams = {};
-    bool autoDepthSubstituted = false;
-    if (ShouldSubstituteAutoDepth(_real, Adapter, DeviceType, pPresentationParameters))
-    {
-        originalParams = *pPresentationParameters;
-        pPresentationParameters->EnableAutoDepthStencil = FALSE;
-        autoDepthSubstituted = true;
-        LOG_INFO("Auto-depth suppressed for INTZ substitution via Ex (orig format=0x{:X}, MS={})",
-                 static_cast<uint32_t>(originalParams.AutoDepthStencilFormat),
-                 static_cast<int>(originalParams.MultiSampleType));
-    }
-
     HRESULT hr = _realEx->CreateDeviceEx(Adapter, DeviceType, hFocusWindow, BehaviorFlags, pPresentationParameters,
                                           pFullscreenDisplayMode, ppReturnedDeviceInterface);
 
     if (FAILED(hr) || ppReturnedDeviceInterface == nullptr || *ppReturnedDeviceInterface == nullptr)
     {
-        if (autoDepthSubstituted)
-            *pPresentationParameters = originalParams;
         LOG_ERROR("CreateDeviceEx failed: {:#x}", (unsigned long) hr);
         return hr;
     }
@@ -299,12 +238,6 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3D9Ex::CreateDeviceEx(UINT Adapter, D3DD
     LOG_INFO("Wrapping IDirect3DDevice9Ex");
     auto wrapped = new WrappedIDirect3DDevice9Ex(static_cast<IDirect3DDevice9*>(*ppReturnedDeviceInterface),
                                                   *ppReturnedDeviceInterface, hFocusWindow, pPresentationParameters);
-
-    if (autoDepthSubstituted)
-    {
-        wrapped->InitAutoDepthIntz(pPresentationParameters->BackBufferWidth,
-                                   pPresentationParameters->BackBufferHeight);
-    }
 
     State::Instance().currentD3D9Device = wrapped;
     State::Instance().currentD3D9DeviceEx = wrapped;

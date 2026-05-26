@@ -389,7 +389,87 @@ void WrappedIDirect3DDevice9Ex::ReleaseDepthStatsMap()
     }
     _depthStats.clear();
     _currentDepthForStats = nullptr;
+    _identifiedSceneDepth = nullptr; // observer ptr, the map held the ref
     _loggedDepthStatsSummary = false;
+}
+
+// Phase 3 Mark 2 c2: score every tracked depth surface against the ReShade
+// heuristic and pick the winner. Called once per Present.
+//
+//   prefer_drawcalls = (drawcalls_indirect >= drawcalls / 3)
+//   winner = max-by-(drawcalls if prefer_drawcalls else vertices)
+//
+// DX9 has no real indirect-draw API, so prefer_drawcalls will essentially
+// never trip — vertices wins in practice. Filters:
+//   - vertices > 3 (suppresses fullscreen-quad blits, UI passes)
+//   - used within the last 2 frames (drops abandoned surfaces)
+//   - aspect ratio within 10% of backbuffer (drops shadow maps / cube faces)
+void WrappedIDirect3DDevice9Ex::IdentifySceneDepth()
+{
+    if (_presentParams.BackBufferWidth == 0 || _presentParams.BackBufferHeight == 0)
+        return;
+
+    const float bbAspect = static_cast<float>(_presentParams.BackBufferWidth) /
+                           static_cast<float>(_presentParams.BackBufferHeight);
+    constexpr float kAspectTolerance = 0.10f;
+
+    std::lock_guard<std::mutex> lock(_depthStatsMutex);
+
+    IDirect3DSurface9* winner = nullptr;
+    DepthSurfaceStats winnerStats = {};
+
+    for (const auto& kv : _depthStats)
+    {
+        const auto& s = kv.second;
+
+        if (s.vertices <= 3) continue;
+        if (_frameIndex - s.last_used_frame > 2) continue;
+        if (s.width == 0 || s.height == 0) continue;
+
+        const float surfaceAspect = static_cast<float>(s.width) / static_cast<float>(s.height);
+        const float aspectDelta = std::fabs(surfaceAspect - bbAspect) / bbAspect;
+        if (aspectDelta > kAspectTolerance) continue;
+
+        const bool preferDrawcalls = (s.drawcalls > 0 && s.drawcalls_indirect >= s.drawcalls / 3);
+        bool wins;
+        if (winner == nullptr)
+        {
+            wins = true;
+        }
+        else if (preferDrawcalls)
+        {
+            wins = s.drawcalls > winnerStats.drawcalls;
+        }
+        else
+        {
+            wins = s.vertices > winnerStats.vertices;
+        }
+
+        if (wins)
+        {
+            winner = kv.first;
+            winnerStats = s;
+        }
+    }
+
+    if (winner != _identifiedSceneDepth)
+    {
+        IDirect3DSurface9* prev = _identifiedSceneDepth;
+        _identifiedSceneDepth = winner;
+        if (winner)
+        {
+            LOG_INFO("Identified scene depth surface: {} {}x{} fmt=0x{:X} MS={} draws={} verts={}",
+                     static_cast<const void*>(winner),
+                     winnerStats.width, winnerStats.height,
+                     static_cast<uint32_t>(winnerStats.format),
+                     static_cast<int>(winnerStats.multisample),
+                     winnerStats.drawcalls, winnerStats.vertices);
+        }
+        else if (prev)
+        {
+            LOG_INFO("Lost previously identified scene depth surface (no candidate this frame)");
+        }
+    }
 }
 
 void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
@@ -781,6 +861,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
         _vsConstCallsThisFrame = 0;
 
         LogTopDepthStats();
+        IdentifySceneDepth();
         AttemptDepthReadback();
     }
 
@@ -1520,6 +1601,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::PresentEx(CONST RECT* pSour
         _vsConstCallsThisFrame = 0;
 
         LogTopDepthStats();
+        IdentifySceneDepth();
         AttemptDepthReadback();
     }
 

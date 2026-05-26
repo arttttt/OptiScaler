@@ -183,6 +183,7 @@ private:
     void ResetDepthStatsForCurrentZ();
     void LogTopDepthStats();
     void ReleaseDepthStatsMap();
+    void IdentifySceneDepth();
 
 
     IDirect3DDevice9* _real = nullptr;
@@ -236,6 +237,11 @@ private:
     std::unordered_map<IDirect3DSurface9*, DepthSurfaceStats> _depthStats;
     IDirect3DSurface9* _currentDepthForStats = nullptr;
     bool _loggedDepthStatsSummary = false;
+
+    // Phase 3 Mark 2: the surface scoring picked as "scene depth" this frame.
+    // The map owns the underlying ref; this is a non-owning observer pointer
+    // and is nulled in ReleaseDepthStatsMap so it never dangles.
+    IDirect3DSurface9* _identifiedSceneDepth = nullptr;
 
     // Phase 3 INTZ: which sampleable-depth FourCC formats the adapter supports.
     // Populated once in the constructor via CheckDeviceFormat.

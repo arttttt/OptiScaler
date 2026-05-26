@@ -1,9 +1,10 @@
 # Phase 5: DX9→DX11 Bridge and Upscaler Execution
 
-**Status:** 5a (color round-trip) + 5b (stand-in sharpen pass) shipped.
-FSR2 SDK integration deferred — needs an x86 FFX bundle, see "Why not
-FSR2 yet" below. Pipeline-completeness work (depth + MV + jitter wiring)
-continues independently in Phase 7.
+**Status:** 5a (color round-trip) + 5b stand-in (`ClearRenderTargetView`
+to red as the visible proof) shipped. FSR2 SDK dispatch is deferred —
+the x86 FFX bundle doesn't exist yet, see "Why not FSR2 yet" below.
+Pipeline-completeness work (jitter for shader-based games) continues
+independently in Phase 7.
 **Depends on:** Phases 2, 3, 4
 
 ## Why not FSR2 yet
@@ -14,38 +15,56 @@ builds for Win32 from source but needs CI / submodule work to ship an
 x86 bundle the way the x64 one is shipped today. Tracked as a separate
 task to keep the bridge work moving.
 
-5b uses a 4-tap unsharp-mask CS as the stand-in dispatch — proves the
-bridge does real DX11 work without taking the FFX-bundle dependency. The
-swap point is one line in `Render`: replace
-`sharpen->Dispatch()`+`CopyResource(out, sharpen->Output())` with the
+5b uses `ClearRenderTargetView` painting the shared output red as the
+visible stand-in. The swap point is one block in `Render`: replace the
+`if (Dx9TAA_BridgeDebug) ClearRenderTargetView(...)` branch with the
 eventual FSR2 `Evaluate` once the x86 bundle exists.
 
-## Current state (5a + 5b)
+## Why not the sharpen compute shader
 
-The bridge class `IFeature_Dx9wDx11` owns a DX11 device + two shared color
-textures (in + out) created from the game's D3D9Ex device, plus a
-`Sharpen_Dx11` dispatcher that runs an unsharp-mask CS against a DX11-only
-UAV-bound intermediate texture (shared resources can't be UAVs — DX9 has
-no equivalent bind flag). On every `Present`, when `Dx9TAA` +
-`Dx9TAA_Bridge` are on:
+The original 5b plan was a 4-tap unsharp-mask CS writing to a
+UAV-bound intermediate texture (`shaders/sharpen/`, still in tree).
+`CreateTexture2D` with `DXGI_FORMAT_B8G8R8X8_UNORM` (HL2's backbuffer
+format) plus `D3D11_BIND_UNORDERED_ACCESS` killed HL2 hard — that
+format isn't in DX11.0's mandatory typed-UAV list, and the D3D11
+debug layer's break-on-error policy terminated the host process
+before the HRESULT could surface.
+
+When the FFX bundle isn't ready, the right replacement for clear-red
+is a Pixel Shader pass writing via RTV (RT bind flag IS inherited
+from `D3DUSAGE_RENDERTARGET`, no format gotchas). The Sharpen_Dx11
+class stays in tree as the carrier for the cbuffer layout + shader
+source the PS rewrite will reuse.
+
+## Current state (5a + 5b stand-in)
+
+The bridge class `IFeature_Dx9wDx11` owns a DX11 device + two shared
+color textures (in + out) created from the game's D3D9Ex device, plus
+a render-target view on the shared output (only used by the debug
+clear path). On every `Present`, when `Dx9TAA` + `Dx9TAA_Bridge` are on:
 
 1. `StretchRect(backbuffer → sharedIn)` (DX9 side)
 2. `IDirect3DQuery9(EVENT)` polled to S_OK so DX11 sees finished writes
-3. DX11: either `Sharpen_Dx11::Dispatch(sharedIn → sharpenOut)` +
-   `CopyResource(sharedOut, sharpenOut)` (5b normal path), or a direct
-   `CopyResource(sharedOut, sharedIn)` (5a fallback if sharpen failed to
-   initialise). `Flush` either way.
+3. DX11: if `Dx9TAA_BridgeDebug=true` (default),
+   `ClearRenderTargetView(sharedOutRtv, RED)` — screen becomes red.
+   Otherwise `CopyResource(sharedOut, sharedIn)` for a transparent
+   round-trip. `Flush` either way.
 4. `StretchRect(sharedOut → backbuffer)` (DX9 side)
 
-Sharpness amount is controlled by `Dx9TAA_Sharpness` (default `0.5`).
+The DX11 device is created **without** `D3D11_CREATE_DEVICE_DEBUG` even
+in Debug builds. The debug layer issues `__debugbreak()` on errors from
+inside the API call, which silently kills the host game (no shell to
+trap the break). See the Phase 5b stand-in project memory for the full
+post-mortem.
 
 If anything in the chain fails (non-Ex device, shared-handle allocation,
 DX11 device creation, `OpenSharedResource`), `_bridgeDisabled` is set
 and the wrapper just passes Present through until the next `Reset`.
 
-**Visual outcome:** screen unchanged. The trip is a smoke test that the
-DX9↔DX11 share works on the user's GPU/driver. First successful frame
-logs `Dx9wDx11: first round-trip ok`.
+**Visual outcome:** with `Dx9TAA_BridgeDebug=true`, the whole game
+backbuffer comes back red — proof that DX9→DX11→DX9 pixels round-trip
+through our DX11 device. Set to `false` for transparent pass-through.
+First successful frame logs `Dx9wDx11: first round-trip ok`.
 
 **Known limitation:** non-Ex devices (most pre-2008 titles, possibly
 NFSU) bail out at Init. The CPU-readback fallback is a 5b task.

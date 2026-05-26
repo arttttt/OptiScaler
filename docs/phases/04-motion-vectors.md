@@ -1,7 +1,10 @@
 # Phase 4: Camera Motion Vector Generation
 
-**Status:** Standalone dispatcher + HLSL + view/proj capture done. Wiring is
-in Phase 5 (the bridge feeds the depth texture and consumes the MV output).
+**Status:** Standalone dispatcher + HLSL + view/proj capture done.
+Bridge wiring is the FSR2 hookup in Phase 5b. **Output is zero on
+shader-based games** (HL2, NFSU, every non-fixed-function title) until
+Phase 7 lands matrix capture via vertex-shader bytecode patching — the
+same root cause as the dead [Phase 2](02-jitter.md) `SetTransform` path.
 **Depends on:** Phase 1
 
 ## Goal

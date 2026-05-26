@@ -152,6 +152,8 @@ public:
 
 private:
     void InvalidateTrackedResources();
+    void AttemptDepthReadback();
+
 
     IDirect3DDevice9* _real = nullptr;
     IDirect3DDevice9Ex* _realEx = nullptr;
@@ -171,6 +173,11 @@ private:
     UINT _trackedDepthArea = 0;
     D3DSURFACE_DESC _trackedDepthDesc = {};
     bool _loggedDepthCapture = false;
+
+    // Phase 3: CPU-side staging copy of the depth surface.
+    // Same format / dims as source, D3DPOOL_SYSTEMMEM. Recreated on Reset.
+    IDirect3DSurface9* _depthStagingSurface = nullptr;
+    bool _loggedDepthReadback = false;
 
     // Phase 2: sub-pixel jitter applied this frame, in pixel space.
     // Forwarded to the upscaler in later phases.

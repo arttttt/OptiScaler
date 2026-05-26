@@ -29,6 +29,70 @@ void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
     _trackedDepthArea = 0;
     _trackedDepthDesc = {};
     _loggedDepthCapture = false;
+
+    if (_depthStagingSurface)
+    {
+        _depthStagingSurface->Release();
+        _depthStagingSurface = nullptr;
+    }
+    _loggedDepthReadback = false;
+}
+
+void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
+{
+    if (!_trackedDepthSurface)
+        return;
+
+    // MSAA depth needs resolve via StretchRect first — out of scope for Phase 3 MVP.
+    if (_trackedDepthDesc.MultiSampleType != D3DMULTISAMPLE_NONE)
+    {
+        if (!_loggedDepthReadback)
+        {
+            _loggedDepthReadback = true;
+            LOG_WARN("Depth readback skipped: MSAA depth surface ({}x{} samples={})",
+                     _trackedDepthDesc.Width, _trackedDepthDesc.Height,
+                     static_cast<int>(_trackedDepthDesc.MultiSampleType));
+        }
+        return;
+    }
+
+    // Staging surface: same format/dims, SYSTEMMEM. Created lazily, freed on Reset.
+    if (!_depthStagingSurface)
+    {
+        HRESULT hr = _real->CreateOffscreenPlainSurface(
+            _trackedDepthDesc.Width,
+            _trackedDepthDesc.Height,
+            _trackedDepthDesc.Format,
+            D3DPOOL_SYSTEMMEM,
+            &_depthStagingSurface,
+            nullptr);
+
+        if (FAILED(hr))
+        {
+            if (!_loggedDepthReadback)
+            {
+                _loggedDepthReadback = true;
+                LOG_ERROR("Depth staging CreateOffscreenPlainSurface failed: hr=0x{:08X} (format=0x{:X})",
+                          static_cast<uint32_t>(hr),
+                          static_cast<uint32_t>(_trackedDepthDesc.Format));
+            }
+            return;
+        }
+    }
+
+    const HRESULT hr = _real->GetRenderTargetData(_trackedDepthSurface, _depthStagingSurface);
+
+    if (!_loggedDepthReadback)
+    {
+        _loggedDepthReadback = true;
+        if (SUCCEEDED(hr))
+            LOG_INFO("Depth GetRenderTargetData OK ({}x{}, format=0x{:X})",
+                     _trackedDepthDesc.Width, _trackedDepthDesc.Height,
+                     static_cast<uint32_t>(_trackedDepthDesc.Format));
+        else
+            LOG_WARN("Depth GetRenderTargetData failed: hr=0x{:08X} — likely needs INTZ/Nukem path",
+                     static_cast<uint32_t>(hr));
+    }
 }
 
 // =============================================================================
@@ -160,6 +224,9 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Reset(D3DPRESENT_PARAMETERS
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion)
 {
+    if (Config::Instance()->Dx9TAA.value_or_default())
+        AttemptDepthReadback();
+
     return _real->Present(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);
 }
 
@@ -794,6 +861,9 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::PresentEx(CONST RECT* pSour
 {
     if (_realEx == nullptr)
         return E_NOTIMPL;
+
+    if (Config::Instance()->Dx9TAA.value_or_default())
+        AttemptDepthReadback();
 
     return _realEx->PresentEx(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion, dwFlags);
 }

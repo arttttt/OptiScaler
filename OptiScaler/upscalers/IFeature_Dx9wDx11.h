@@ -24,7 +24,11 @@ class Sharpen_Dx11;
 class IFeature_Dx9wDx11
 {
   public:
-    IFeature_Dx9wDx11() = default;
+    // Both ctor and dtor live in the .cpp on purpose — _sharpen is a
+    // std::unique_ptr<Sharpen_Dx11> and Sharpen_Dx11 is forward-declared
+    // here, so inline (= default) definitions would force every TU that
+    // instantiates this class to also see the full Sharpen_Dx11 header.
+    IFeature_Dx9wDx11();
     ~IFeature_Dx9wDx11();
 
     bool Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* gameDeviceEx, UINT width, UINT height,

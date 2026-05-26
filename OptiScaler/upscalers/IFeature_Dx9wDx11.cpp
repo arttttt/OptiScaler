@@ -26,6 +26,8 @@ namespace
     }
 }
 
+IFeature_Dx9wDx11::IFeature_Dx9wDx11() = default;
+
 IFeature_Dx9wDx11::~IFeature_Dx9wDx11()
 {
     ReleaseAll();

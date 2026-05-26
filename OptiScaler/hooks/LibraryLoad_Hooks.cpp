@@ -425,6 +425,7 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
         return module;
     }
 
+#ifndef _M_IX86
     if (CheckDllNameW(&libName, &xessNamesW))
     {
         auto module = LoadLibxess(libName);
@@ -490,6 +491,7 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
         return module;
     }
+#endif
 
     CheckModulesInMemory();
 
@@ -907,6 +909,7 @@ void LibraryLoadHooks::CheckModulesInMemory()
         }
     }
 
+#ifndef _M_IX86
     // XeSS
     if (XeSSProxy::Module() == nullptr)
     {
@@ -953,6 +956,7 @@ void LibraryLoadHooks::CheckModulesInMemory()
             FfxApiProxy::InitFfxVk(ffxVkModule);
         }
     }
+#endif
 }
 
 bool LibraryLoadHooks::EndsWithInsensitive(std::wstring_view text, std::wstring_view suffix)

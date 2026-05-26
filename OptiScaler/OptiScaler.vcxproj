@@ -1260,6 +1260,9 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
 
     </ClCompile>
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="stubs_win32.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'!='Win32'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="inputs\NVNGX_DLSS_Vk.cpp">
 
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>

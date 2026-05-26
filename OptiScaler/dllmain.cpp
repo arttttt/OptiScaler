@@ -1004,6 +1004,7 @@ static void CheckWorkingMode()
         StreamlineHooks::hookCommon(slCommon);
     }
 
+#ifndef _M_IX86
     // XeSS
     HMODULE xessModule = nullptr;
     xessModule = GetDllNameWModule(&xessNamesW);
@@ -1022,7 +1023,6 @@ static void CheckWorkingMode()
     }
 
     // NVNGX
-#ifndef _M_IX86
     HMODULE nvngxModule = nullptr;
     nvngxModule = GetDllNameWModule(&nvngxNamesW);
     if (nvngxModule != nullptr)
@@ -1030,7 +1030,6 @@ static void CheckWorkingMode()
         LOG_DEBUG("nvngx.dll already in memory");
         NVNGXProxy::InitNVNGX(nvngxModule);
     }
-#endif
 
     // FFX Dx12
     HMODULE ffxDx12Module = nullptr;
@@ -1082,6 +1081,7 @@ static void CheckWorkingMode()
         LOG_DEBUG("amd_fidelityfx_vk.dll already in memory");
         FfxApiProxy::InitFfxVk(ffxVkModule);
     }
+#endif
 
     // Hook kernel32 methods
     if (!Config::Instance()->EarlyHooking.value_or_default())

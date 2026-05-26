@@ -1178,6 +1178,9 @@
     <ClCompile Include="hooks\D3D9_Hooks.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="stubs_win32.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="hooks\D3D12_Hooks.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

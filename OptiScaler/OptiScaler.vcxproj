@@ -100,16 +100,22 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>$(SolutionDir)external\simpleini;$(SolutionDir)\external\nvngx_dlss_sdk;$(SolutionDir)external\unordered_dense\include;$(SolutionDir)\external\vulkan\include;$(SolutionDir)\external\xess\inc\xess;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)\external\xess\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)include\;$(SolutionDir)external\vulkan\include;$(SolutionDir)external\nvngx_dlss_sdk;$(SolutionDir)external\xess\inc\xess;$(SolutionDir)external\xess\inc\xell;$(SolutionDir)external\xess\inc\xess_fg;$(SolutionDir)external\FidelityFX-SDK\ffx-api\include\ffx_api;$(SolutionDir)external\simpleini;$(SolutionDir)external\unordered_dense\include;$(SolutionDir)external\spdlog\include;$(SolutionDir)external\freetype;$(SolutionDir)external\streamline;$(SolutionDir)external\streamline1;$(SolutionDir)external\nvapi;$(SolutionDir)external\nlohmann;$(SolutionDir)external\fakenvapi;$(SolutionDir)external\magic_enum\include\magic_enum;$(SolutionDir)external\AntiLag2-SDK;$(SolutionDir)external\latencyflex;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)library\detours;$(SolutionDir)external\xess\lib;$(SolutionDir)external\freetype;$(LibraryPath)</LibraryPath>
+    <IntDir>.\Win32\Debug\</IntDir>
+    <TargetExt>.dll</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>$(SolutionDir)external\simpleini;$(SolutionDir)\external\nvngx_dlss_sdk;$(SolutionDir)external\unordered_dense\include;$(SolutionDir)\external\vulkan\include;$(SolutionDir)\external\xess\inc\xess;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)\external\xess\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)include\;$(SolutionDir)external\vulkan\include;$(SolutionDir)external\nvngx_dlss_sdk;$(SolutionDir)external\xess\inc\xess;$(SolutionDir)external\xess\inc\xell;$(SolutionDir)external\xess\inc\xess_fg;$(SolutionDir)external\FidelityFX-SDK\ffx-api\include\ffx_api;$(SolutionDir)external\simpleini;$(SolutionDir)external\unordered_dense\include;$(SolutionDir)external\spdlog\include;$(SolutionDir)external\freetype;$(SolutionDir)external\streamline;$(SolutionDir)external\streamline1;$(SolutionDir)external\nvapi;$(SolutionDir)external\nlohmann;$(SolutionDir)external\fakenvapi;$(SolutionDir)external\magic_enum\include\magic_enum;$(SolutionDir)external\AntiLag2-SDK;$(SolutionDir)external\latencyflex;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)library\detours;$(SolutionDir)external\xess\lib;$(SolutionDir)external\freetype;$(LibraryPath)</LibraryPath>
+    <IntDir>.\Win32\Release\</IntDir>
+    <TargetExt>.dll</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|Win32'">
-    <IncludePath>$(SolutionDir)external\simpleini;$(SolutionDir)\external\nvngx_dlss_sdk;$(SolutionDir)external\unordered_dense\include;$(SolutionDir)\external\vulkan\include;$(SolutionDir)\external\xess\inc\xess;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)\external\xess\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)include\;$(SolutionDir)external\vulkan\include;$(SolutionDir)external\nvngx_dlss_sdk;$(SolutionDir)external\xess\inc\xess;$(SolutionDir)external\xess\inc\xell;$(SolutionDir)external\xess\inc\xess_fg;$(SolutionDir)external\FidelityFX-SDK\ffx-api\include\ffx_api;$(SolutionDir)external\simpleini;$(SolutionDir)external\unordered_dense\include;$(SolutionDir)external\spdlog\include;$(SolutionDir)external\freetype;$(SolutionDir)external\streamline;$(SolutionDir)external\streamline1;$(SolutionDir)external\nvapi;$(SolutionDir)external\nlohmann;$(SolutionDir)external\fakenvapi;$(SolutionDir)external\magic_enum\include\magic_enum;$(SolutionDir)external\AntiLag2-SDK;$(SolutionDir)external\latencyflex;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)library\detours;$(SolutionDir)external\xess\lib;$(SolutionDir)external\freetype;$(LibraryPath)</LibraryPath>
+    <IntDir>.\Win32\ReleaseDebug\</IntDir>
+    <TargetExt>.dll</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>$(ProjectDir);$(ProjectDir)include\;$(SolutionDir)external\vulkan\include;$(SolutionDir)external\nvngx_dlss_sdk;$(SolutionDir)external\xess\inc\xess;$(SolutionDir)external\xess\inc\xell;$(SolutionDir)external\xess\inc\xess_fg;$(SolutionDir)external\FidelityFX-SDK\ffx-api\include\ffx_api;$(SolutionDir)external\simpleini;$(SolutionDir)external\unordered_dense\include;$(SolutionDir)external\spdlog\include;$(SolutionDir)external\freetype;$(SolutionDir)external\streamline;$(SolutionDir)external\streamline1;$(SolutionDir)external\nvapi;$(SolutionDir)external\nlohmann;$(SolutionDir)external\fakenvapi;$(SolutionDir)external\magic_enum\include\magic_enum;$(SolutionDir)external\AntiLag2-SDK;$(SolutionDir)external\latencyflex;$(IncludePath)</IncludePath>

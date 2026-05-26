@@ -6,7 +6,9 @@
 
 #include <proxies/Ntdll_Proxy.h>
 #include <proxies/Kernel32_Proxy.h>
+#ifndef _M_IX86
 #include <proxies/NVNGX_Proxy.h>
+#endif
 #include <proxies/XeSS_Proxy.h>
 #include <proxies/FfxApi_Proxy.h>
 #include <proxies/Dxgi_Proxy.h>
@@ -23,7 +25,9 @@
 #include <hooks/D3D9_Hooks.h>
 #include <hooks/D3D12_Hooks.h>
 #include <hooks/Vulkan_Hooks.h>
+#ifndef _M_IX86
 #include <hooks/Gdi32_Hooks.h>
+#endif
 #include <hooks/Streamline_Hooks.h>
 
 #include <fsr4/FSR4ModelSelection.h>

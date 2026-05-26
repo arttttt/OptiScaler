@@ -9,7 +9,9 @@
 
 #include "proxies/Dxgi_Proxy.h"
 #include <proxies/XeSS_Proxy.h>
+#ifndef _M_IX86
 #include <proxies/NVNGX_Proxy.h>
+#endif
 #include "proxies/Kernel32_Proxy.h"
 #include "proxies/KernelBase_Proxy.h"
 #include "proxies/Ntdll_Proxy.h"
@@ -32,10 +34,12 @@
 #include <hooks/Vulkan_Hooks.h>
 #include <hooks/Ntdll_Hooks.h>
 #include <hooks/Kernel_Hooks.h>
+#ifndef _M_IX86
 #include <hooks/Gdi32_Hooks.h>
 #include <hooks/Wintrust_Hooks.h>
 #include <hooks/Crypt32_Hooks.h>
 #include <hooks/Advapi32_Hooks.h>
+#endif
 #include <hooks/Streamline_Hooks.h>
 
 #include <nvapi/NvApiHooks.h>
@@ -1016,6 +1020,7 @@ static void CheckWorkingMode()
     }
 
     // NVNGX
+#ifndef _M_IX86
     HMODULE nvngxModule = nullptr;
     nvngxModule = GetDllNameWModule(&nvngxNamesW);
     if (nvngxModule != nullptr)
@@ -1023,6 +1028,7 @@ static void CheckWorkingMode()
         LOG_DEBUG("nvngx.dll already in memory");
         NVNGXProxy::InitNVNGX(nvngxModule);
     }
+#endif
 
     // FFX Dx12
     HMODULE ffxDx12Module = nullptr;

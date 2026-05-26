@@ -30,7 +30,13 @@ struct d3d9_dll
     }
 } d3d9;
 
-// Hooked exports — go through proxy which may return our wrapper
+// Hooked exports — go through proxy which may return our wrapper.
+// extern "C" gives predictable name decoration so the .def aliases
+// match: on x64 the symbol is _Direct3DCreate9Export, on x86 stdcall
+// it is __Direct3DCreate9Export@N (compiler-added underscore plus
+// arg-byte suffix). Source.def and Source_x86.def encode each variant.
+extern "C" {
+
 IDirect3D9* WINAPI _Direct3DCreate9Export(UINT SDKVersion)
 {
     return D3d9Proxy::Direct3DCreate9_Hooked()(SDKVersion);
@@ -87,3 +93,5 @@ DWORD WINAPI _D3DPERF_GetStatusExport(void)
         return D3d9Proxy::D3DPERF_GetStatus_()();
     return 0;
 }
+
+} // extern "C"

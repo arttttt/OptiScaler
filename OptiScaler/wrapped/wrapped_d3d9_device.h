@@ -2,6 +2,24 @@
 
 #include <d3d9.h>
 
+#include <mutex>
+#include <unordered_map>
+
+// Per-depth-stencil-surface statistics for ReShade-style scene-depth
+// identification. We accumulate draw / vertex counts each frame and use them
+// at Present time to pick which surface is "the scene depth".
+struct DepthSurfaceStats
+{
+    int vertices = 0;
+    int drawcalls = 0;
+    int drawcalls_indirect = 0; // DX9 has no real indirect draws, kept for parity
+    int last_used_frame = 0;
+    UINT width = 0;
+    UINT height = 0;
+    D3DFORMAT format = D3DFMT_UNKNOWN;
+    D3DMULTISAMPLE_TYPE multisample = D3DMULTISAMPLE_NONE;
+};
+
 class WrappedIDirect3DDevice9Ex final : public IDirect3DDevice9Ex
 {
 public:
@@ -159,6 +177,13 @@ private:
     bool EnsureDepthCopyRT(UINT width, UINT height);
     bool EnsureDepthCopyVB(UINT width, UINT height);
 
+    // Phase 3 Mark 2 helpers
+    void RegisterDepthSurfaceForStats(IDirect3DSurface9* surface);
+    void AccumulateDrawStats(D3DPRIMITIVETYPE primType, UINT primCount, UINT verticesOverride);
+    void ResetDepthStatsForCurrentZ();
+    void LogTopDepthStats();
+    void ReleaseDepthStatsMap();
+
 
     IDirect3DDevice9* _real = nullptr;
     IDirect3DDevice9Ex* _realEx = nullptr;
@@ -202,6 +227,15 @@ private:
     int _vsConstCallsThisFrame = 0;
     int _projectionMatchCount = 0;
     bool _loggedFirstFrameVSStats = false;
+
+    // Phase 3 Mark 2: per-depth-surface activity tracking (ReShade-style).
+    // Each surface bound as depth-stencil gets an entry; Draw* methods bump its
+    // counters. A separate mutex protects the map because D3D9 with
+    // D3DCREATE_MULTITHREADED can hit these from any thread.
+    std::mutex _depthStatsMutex;
+    std::unordered_map<IDirect3DSurface9*, DepthSurfaceStats> _depthStats;
+    IDirect3DSurface9* _currentDepthForStats = nullptr;
+    bool _loggedDepthStatsSummary = false;
 
     // Phase 3 INTZ: which sampleable-depth FourCC formats the adapter supports.
     // Populated once in the constructor via CheckDeviceFormat.

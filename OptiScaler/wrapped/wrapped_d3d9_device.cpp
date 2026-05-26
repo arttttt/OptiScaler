@@ -411,6 +411,77 @@ IDirect3DTexture9* WrappedIDirect3DDevice9Ex::IntzTextureFor(IDirect3DSurface9* 
     return it != _intzTextureBySurface.end() ? it->second : nullptr;
 }
 
+// Phase 3 Mark 2 c4: build and bind an INTZ-backed surface as the device's
+// depth-stencil after WrappedIDirect3D9Ex::CreateDevice suppressed auto-depth.
+// Re-run from Reset/ResetEx if _autoDepthSubstituted is still set, since the
+// device drops every default-pool surface on reset.
+void WrappedIDirect3DDevice9Ex::InitAutoDepthIntz(UINT width, UINT height)
+{
+    if (width == 0 || height == 0)
+    {
+        LOG_ERROR("InitAutoDepthIntz: invalid dims {}x{}", width, height);
+        return;
+    }
+
+    const D3DFORMAT intzFormat = static_cast<D3DFORMAT>(MAKEFOURCC('I', 'N', 'T', 'Z'));
+
+    IDirect3DTexture9* tex = nullptr;
+    HRESULT hr = _real->CreateTexture(
+        width, height, 1,
+        D3DUSAGE_DEPTHSTENCIL,
+        intzFormat,
+        D3DPOOL_DEFAULT,
+        &tex,
+        nullptr);
+    if (FAILED(hr) || tex == nullptr)
+    {
+        LOG_ERROR("Auto-depth INTZ CreateTexture failed: hr=0x{:08X}", static_cast<uint32_t>(hr));
+        return;
+    }
+
+    IDirect3DSurface9* surf = nullptr;
+    hr = tex->GetSurfaceLevel(0, &surf);
+    if (FAILED(hr) || surf == nullptr)
+    {
+        LOG_ERROR("Auto-depth INTZ GetSurfaceLevel failed: hr=0x{:08X}", static_cast<uint32_t>(hr));
+        tex->Release();
+        return;
+    }
+
+    hr = _real->SetDepthStencilSurface(surf);
+    if (FAILED(hr))
+    {
+        LOG_ERROR("Auto-depth INTZ SetDepthStencilSurface failed: hr=0x{:08X}", static_cast<uint32_t>(hr));
+        surf->Release();
+        tex->Release();
+        return;
+    }
+
+    // Add to map so the readback path can find which INTZ texture backs this
+    // surface. The map owns the texture ref; the surface ref is shared with
+    // the device's internal binding plus our _trackedDepthSurface seat.
+    _intzTextureBySurface[surf] = tex;
+
+    if (_trackedDepthSurface)
+        _trackedDepthSurface->Release();
+    _trackedDepthSurface = surf;
+    _trackedDepthArea = width * height;
+    _trackedDepthDesc = {};
+    _trackedDepthDesc.Width = width;
+    _trackedDepthDesc.Height = height;
+    _trackedDepthDesc.Format = intzFormat;
+    _trackedDepthDesc.MultiSampleType = D3DMULTISAMPLE_NONE;
+
+    _loggedDepthCapture = true;   // suppress redundant SetDepthStencilSurface log
+    _loggedIntzCreation = true;   // suppress redundant intercept log
+    _loggedReadbackSkip = false;
+    _loggedReadbackResult = false;
+
+    _autoDepthSubstituted = true; // makes Reset re-run us on the new device state
+
+    LOG_INFO("Auto-depth INTZ initialised and bound ({}x{})", width, height);
+}
+
 // Phase 3 Mark 2 c2: score every tracked depth surface against the ReShade
 // heuristic and pick the winner. Called once per Present.
 //
@@ -855,12 +926,24 @@ UINT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetNumberOfSwapChains()
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Reset(D3DPRESENT_PARAMETERS* pPresentationParameters)
 {
+    const bool needAutoDepth = _autoDepthSubstituted;
     InvalidateTrackedResources();
 
     if (pPresentationParameters)
         _presentParams = *pPresentationParameters;
 
-    return _real->Reset(pPresentationParameters);
+    const HRESULT hr = _real->Reset(pPresentationParameters);
+
+    // After a successful Reset we must re-establish our auto-depth INTZ — the
+    // device dropped its default-pool surfaces (including ours) and the game
+    // expects depth to "just work".
+    if (SUCCEEDED(hr) && needAutoDepth)
+    {
+        _autoDepthSubstituted = true;
+        InitAutoDepthIntz(_presentParams.BackBufferWidth, _presentParams.BackBufferHeight);
+    }
+
+    return hr;
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion)
@@ -1767,12 +1850,21 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::ResetEx(D3DPRESENT_PARAMETE
     if (_realEx == nullptr)
         return E_NOTIMPL;
 
+    const bool needAutoDepth = _autoDepthSubstituted;
     InvalidateTrackedResources();
 
     if (pPresentationParameters)
         _presentParams = *pPresentationParameters;
 
-    return _realEx->ResetEx(pPresentationParameters, pFullscreenDisplayMode);
+    const HRESULT hr = _realEx->ResetEx(pPresentationParameters, pFullscreenDisplayMode);
+
+    if (SUCCEEDED(hr) && needAutoDepth)
+    {
+        _autoDepthSubstituted = true;
+        InitAutoDepthIntz(_presentParams.BackBufferWidth, _presentParams.BackBufferHeight);
+    }
+
+    return hr;
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetDisplayModeEx(UINT iSwapChain, D3DDISPLAYMODEEX* pMode, D3DDISPLAYROTATION* pRotation)

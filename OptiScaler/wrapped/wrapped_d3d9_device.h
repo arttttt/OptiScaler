@@ -168,6 +168,11 @@ public:
 
     IDirect3DDevice9* GetReal() { return _real; }
 
+    // Called from WrappedIDirect3D9Ex::CreateDevice (or by Reset) when the
+    // auto-depth surface was suppressed in favour of our INTZ. Creates the
+    // INTZ texture, binds its level-0 surface, and records it in the INTZ map.
+    void InitAutoDepthIntz(UINT width, UINT height);
+
 private:
     void InvalidateTrackedResources();
     void AttemptDepthReadback();
@@ -259,6 +264,11 @@ private:
     // the texture for as long as the entry lives.
     std::unordered_map<IDirect3DSurface9*, IDirect3DTexture9*> _intzTextureBySurface;
     bool _loggedIntzCreation = false;
+
+    // Phase 3 Mark 2 c4: marks the auto-depth path active for this wrapper.
+    // When set, Reset/ResetEx re-runs InitAutoDepthIntz so the bind survives
+    // the device losing its surfaces. Cleared when substitution is turned off.
+    bool _autoDepthSubstituted = false;
 
     // Phase 3 INTZ copy pass: R32F render target the depth-copy pixel shader
     // writes to (DEFAULT pool, RENDERTARGET usage). Lazily created on first

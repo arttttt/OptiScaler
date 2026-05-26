@@ -1,6 +1,10 @@
 # Phase 2: Jitter Injection
 
-**Status:** TODO
+**Status:** Implemented, but the `SetTransform(D3DTS_PROJECTION)`
+inject point doesn't fire on real shader-era games (verified empty
+on NFSU 2003 and HL2 2004). Phase 7 is the primary jitter path; this
+remains as scaffolding for any actually-fixed-function game and so
+that jitter values are computed and recorded in a single place.
 **Depends on:** Phase 1
 
 ## Goal

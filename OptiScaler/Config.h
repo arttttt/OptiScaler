@@ -250,6 +250,9 @@ class Config
     // Nukems
     CustomOptional<bool> MakeDepthCopy { false };
 
+    // DX9 DLAA
+    CustomOptional<bool> Dx9TAA { false };
+
     // CAS
     CustomOptional<bool> RcasEnabled { false };
     CustomOptional<bool> MotionSharpnessEnabled { false };

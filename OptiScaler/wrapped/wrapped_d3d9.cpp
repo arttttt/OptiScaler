@@ -154,6 +154,7 @@ static bool ShouldSubstituteAutoDepth(IDirect3D9* d3d9, UINT adapter, D3DDEVTYPE
                                       const D3DPRESENT_PARAMETERS* pp)
 {
     if (!Config::Instance()->Dx9TAA.value_or_default()) return false;
+    if (!Config::Instance()->Dx9TAA_AutoDepthSubstitution.value_or_default()) return false;
     if (pp == nullptr) return false;
     if (!pp->EnableAutoDepthStencil) return false;
     if (pp->MultiSampleType != D3DMULTISAMPLE_NONE) return false;

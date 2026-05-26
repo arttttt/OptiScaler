@@ -252,6 +252,12 @@ class Config
 
     // DX9 DLAA
     CustomOptional<bool> Dx9TAA { true };
+    // Phase 3 INTZ auto-depth substitution. Default on. Some games (NFSU,
+    // possibly other Renderware-era titles) crash or render incorrectly when
+    // their auto-created depth surface is silently replaced with INTZ — they
+    // can disable this knob per-game to keep the wrapper running without
+    // depth capture. Matches ReShade's `s_disable_intz` opt-out.
+    CustomOptional<bool> Dx9TAA_AutoDepthSubstitution { true };
 
     // CAS
     CustomOptional<bool> RcasEnabled { false };

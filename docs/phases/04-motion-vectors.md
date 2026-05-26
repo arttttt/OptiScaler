@@ -1,6 +1,7 @@
 # Phase 4: Camera Motion Vector Generation
 
-**Status:** TODO
+**Status:** Standalone dispatcher + HLSL + view/proj capture done. Wiring is
+in Phase 5 (the bridge feeds the depth texture and consumes the MV output).
 **Depends on:** Phase 1
 
 ## Goal

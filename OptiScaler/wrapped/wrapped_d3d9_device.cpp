@@ -4,6 +4,20 @@
 #include "misc/HaltonSequence.h"
 #include "wrapped_d3d9_depthstencil.h"
 
+// DX9 row-major 4x4 multiply: out = a * b, i.e. row-vec * a * b.
+// D3DMATRIX::m[i][j] is row i, col j. No D3DX9 dependency.
+static void Mat4Mul(D3DMATRIX* out, const D3DMATRIX& a, const D3DMATRIX& b)
+{
+    D3DMATRIX tmp;
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            tmp.m[i][j] = a.m[i][0] * b.m[0][j] +
+                          a.m[i][1] * b.m[1][j] +
+                          a.m[i][2] * b.m[2][j] +
+                          a.m[i][3] * b.m[3][j];
+    *out = tmp;
+}
+
 WrappedIDirect3DDevice9Ex::WrappedIDirect3DDevice9Ex(IDirect3DDevice9* real, IDirect3DDevice9Ex* realEx, HWND hwnd, D3DPRESENT_PARAMETERS* pPresentParams)
     : _real(real), _realEx(realEx), _hwnd(hwnd)
 {
@@ -1004,6 +1018,18 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
                      _vsConstCallsThisFrame, _projectionMatchCount);
         }
         _vsConstCallsThisFrame = 0;
+
+        // Phase 4: rotate ViewProjection (prev <- cur, cur <- view*proj). The
+        // bridge consumes _prevViewProj / _currentViewProj when populating the
+        // MV compute cbuffer. _viewProjHasPrev becomes true on frame 2.
+        if (_viewProjHasPrev)
+            _prevViewProj = _currentViewProj;
+        Mat4Mul(&_currentViewProj, _currentView, _currentProjection);
+        if (!_viewProjHasPrev)
+        {
+            _prevViewProj = _currentViewProj;
+            _viewProjHasPrev = true;
+        }
 
         LogTopDepthStats();
         IdentifySceneDepth();

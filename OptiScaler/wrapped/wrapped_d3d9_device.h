@@ -205,6 +205,16 @@ private:
     D3DMATRIX _currentView = {};
     D3DMATRIX _currentWorld = {};
 
+    // Phase 4: cached current/previous ViewProjection for camera-only MV
+    // reprojection. Updated at Present, *after* the frame has finished. The
+    // projection stored here is the un-jittered original (Phase 2 only
+    // forwards the jittered copy; the member keeps the original). For
+    // shader-based games where SetTransform(PROJECTION) never fires both
+    // matrices stay at zero — MV gen is a no-op until Phase 7/8 lands.
+    D3DMATRIX _currentViewProj = {};
+    D3DMATRIX _prevViewProj = {};
+    bool _viewProjHasPrev = false;
+
     // Phase 3: scene depth surface (largest one matching backbuffer dims).
     // AddRef'd while tracked, released on dtor / Reset / replacement.
     IDirect3DSurface9* _trackedDepthSurface = nullptr;

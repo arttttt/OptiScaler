@@ -80,6 +80,13 @@ void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
         _depthStagingSurface = nullptr;
     }
     _loggedDepthReadback = false;
+
+    if (_intzDepthTexture)
+    {
+        _intzDepthTexture->Release();
+        _intzDepthTexture = nullptr;
+    }
+    _loggedIntzCreation = false;
 }
 
 // Phase 7 probe: scan a vertex-shader constant-buffer upload for a 4x4 block
@@ -392,6 +399,61 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateRenderTarget(UINT Wid
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateDepthStencilSurface(UINT Width, UINT Height, D3DFORMAT Format, D3DMULTISAMPLE_TYPE MultiSample, DWORD MultisampleQuality, BOOL Discard, IDirect3DSurface9** ppSurface, HANDLE* pSharedHandle)
 {
+    // Phase 3 INTZ: if the game is creating a scene-sized non-MSAA D24-ish
+    // depth surface, swap it for an INTZ texture's level-0 surface. INTZ is
+    // bindable as both depth-stencil and sampleable texture, so we can read
+    // it back later via a pixel-shader copy.
+    if (Config::Instance()->Dx9TAA.value_or_default() &&
+        _intzSupported &&
+        Width == _presentParams.BackBufferWidth &&
+        Height == _presentParams.BackBufferHeight &&
+        MultiSample == D3DMULTISAMPLE_NONE &&
+        (Format == D3DFMT_D24S8 || Format == D3DFMT_D24X8))
+    {
+        const D3DFORMAT intzFormat = static_cast<D3DFORMAT>(MAKEFOURCC('I', 'N', 'T', 'Z'));
+
+        IDirect3DTexture9* intzTex = nullptr;
+        HRESULT hr = _real->CreateTexture(
+            Width, Height, 1,
+            D3DUSAGE_DEPTHSTENCIL,
+            intzFormat,
+            D3DPOOL_DEFAULT,
+            &intzTex,
+            nullptr);
+
+        if (SUCCEEDED(hr) && intzTex != nullptr)
+        {
+            IDirect3DSurface9* intzSurf = nullptr;
+            hr = intzTex->GetSurfaceLevel(0, &intzSurf);
+
+            if (SUCCEEDED(hr) && intzSurf != nullptr)
+            {
+                if (_intzDepthTexture)
+                    _intzDepthTexture->Release();
+                _intzDepthTexture = intzTex; // keep our ref
+
+                *ppSurface = intzSurf; // game owns this ref
+
+                if (!_loggedIntzCreation)
+                {
+                    _loggedIntzCreation = true;
+                    LOG_INFO("INTZ depth surface created ({}x{}, in place of format=0x{:X})",
+                             Width, Height, static_cast<uint32_t>(Format));
+                }
+                return S_OK;
+            }
+
+            intzTex->Release();
+            LOG_WARN("INTZ GetSurfaceLevel failed: hr=0x{:08X}, falling back to normal depth",
+                     static_cast<uint32_t>(hr));
+        }
+        else
+        {
+            LOG_WARN("INTZ CreateTexture failed (CheckDeviceFormat said OK): hr=0x{:08X}, falling back",
+                     static_cast<uint32_t>(hr));
+        }
+    }
+
     return _real->CreateDepthStencilSurface(Width, Height, Format, MultiSample, MultisampleQuality, Discard, ppSurface, pSharedHandle);
 }
 
@@ -1065,6 +1127,54 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateDepthStencilSurfaceEx
 {
     if (_realEx == nullptr)
         return E_NOTIMPL;
+
+    // Same INTZ substitution as the non-Ex path. Usage flag is forwarded as-is
+    // to CreateTexture (which accepts D3DUSAGE_DEPTHSTENCIL plus the optional
+    // shared flag — INTZ + shared is driver-dependent but matches what the
+    // game asked for).
+    if (Config::Instance()->Dx9TAA.value_or_default() &&
+        _intzSupported &&
+        Width == _presentParams.BackBufferWidth &&
+        Height == _presentParams.BackBufferHeight &&
+        MultiSample == D3DMULTISAMPLE_NONE &&
+        (Format == D3DFMT_D24S8 || Format == D3DFMT_D24X8))
+    {
+        const D3DFORMAT intzFormat = static_cast<D3DFORMAT>(MAKEFOURCC('I', 'N', 'T', 'Z'));
+
+        IDirect3DTexture9* intzTex = nullptr;
+        HRESULT hr = _real->CreateTexture(
+            Width, Height, 1,
+            D3DUSAGE_DEPTHSTENCIL | Usage,
+            intzFormat,
+            D3DPOOL_DEFAULT,
+            &intzTex,
+            nullptr);
+
+        if (SUCCEEDED(hr) && intzTex != nullptr)
+        {
+            IDirect3DSurface9* intzSurf = nullptr;
+            hr = intzTex->GetSurfaceLevel(0, &intzSurf);
+
+            if (SUCCEEDED(hr) && intzSurf != nullptr)
+            {
+                if (_intzDepthTexture)
+                    _intzDepthTexture->Release();
+                _intzDepthTexture = intzTex;
+
+                *ppSurface = intzSurf;
+
+                if (!_loggedIntzCreation)
+                {
+                    _loggedIntzCreation = true;
+                    LOG_INFO("INTZ depth surface created via Ex ({}x{}, in place of format=0x{:X})",
+                             Width, Height, static_cast<uint32_t>(Format));
+                }
+                return S_OK;
+            }
+
+            intzTex->Release();
+        }
+    }
 
     return _realEx->CreateDepthStencilSurfaceEx(Width, Height, Format, MultiSample, MultisampleQuality, Discard, ppSurface, pSharedHandle, Usage);
 }

@@ -203,4 +203,10 @@ private:
     bool _rawzSupported = false;
     bool _df24Supported = false;
     bool _df16Supported = false;
+
+    // Phase 3 INTZ: the texture backing the depth-stencil surface we returned
+    // to the game. We hold this ref so the texture survives if the game releases
+    // its surface, and so we can sample it later in the copy pass.
+    IDirect3DTexture9* _intzDepthTexture = nullptr;
+    bool _loggedIntzCreation = false;
 };

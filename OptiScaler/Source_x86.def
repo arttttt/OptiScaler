@@ -1,0 +1,20 @@
+; x86 .def for OptiScaler built as d3d9.dll wrapper.
+;
+; On x86 __stdcall functions are decorated as _Name@N where N is the
+; argument-bytes total. The internal C++ names below carry that
+; suffix; the export name on the left (no prefix, no suffix) is what
+; the game's loader resolves via GetProcAddress.
+;
+; The x64 build uses Source.def; this file is for Phase 1 / Win32
+; only and intentionally exposes just the d3d9 surface.
+
+EXPORTS
+Direct3DCreate9 = _Direct3DCreate9Export@4 @200 PRIVATE
+Direct3DCreate9Ex = _Direct3DCreate9ExExport@8 @201 PRIVATE
+D3DPERF_BeginEvent = _D3DPERF_BeginEventExport@8 @202 PRIVATE
+D3DPERF_EndEvent = _D3DPERF_EndEventExport@0 @203 PRIVATE
+D3DPERF_SetMarker = _D3DPERF_SetMarkerExport@8 @204 PRIVATE
+D3DPERF_SetRegion = _D3DPERF_SetRegionExport@8 @205 PRIVATE
+D3DPERF_QueryRepeatFrame = _D3DPERF_QueryRepeatFrameExport@0 @206 PRIVATE
+D3DPERF_SetOptions = _D3DPERF_SetOptionsExport@4 @207 PRIVATE
+D3DPERF_GetStatus = _D3DPERF_GetStatusExport@0 @208 PRIVATE

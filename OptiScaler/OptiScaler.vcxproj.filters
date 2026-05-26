@@ -1315,5 +1315,8 @@
     <None Include="Source.def">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="Source_x86.def">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

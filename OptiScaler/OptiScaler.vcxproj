@@ -570,212 +570,773 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="proxies\XeSS_Proxy.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="framegen\dlssg\DLSSG_Dx12.cpp" />
-    <ClCompile Include="framegen\ffx\FSRFG_Dx12.cpp" />
-    <ClCompile Include="framegen\IFGFeature.cpp" />
-    <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
-    <ClCompile Include="fsr4\FSR4ModelSelection.cpp" />
-    <ClCompile Include="fsr4\FSR4Upgrade.cpp" />
+    <ClCompile Include="framegen\dlssg\DLSSG_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="framegen\ffx\FSRFG_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="framegen\IFGFeature.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="framegen\IFGFeature_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="fsr4\FSR4ModelSelection.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="fsr4\FSR4Upgrade.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClCompile Include="hooks\D3D9_Hooks.cpp" />
-    <ClCompile Include="hooks\D3D12_Hooks.cpp" />
-    <ClCompile Include="hooks\DxgiFactory_Hooks.cpp" />
-    <ClCompile Include="hooks\DxgiFactory_WrappedCalls.cpp" />
-    <ClCompile Include="hooks\Dxgi_Hooks.cpp" />
-    <ClCompile Include="hooks\FG_Hooks.cpp" />
-    <ClCompile Include="hooks\Kernel_Hooks.cpp" />
+    <ClCompile Include="hooks\D3D12_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hooks\DxgiFactory_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hooks\DxgiFactory_WrappedCalls.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hooks\Dxgi_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hooks\FG_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hooks\Kernel_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClCompile Include="hooks\LibraryLoad_Hooks.cpp" />
-    <ClCompile Include="hooks\VulkanwDx12_Hooks.cpp" />
-    <ClCompile Include="hooks\Xell_Hooks.cpp" />
-    <ClCompile Include="misc\IdentifyGpu.cpp" />
-    <ClCompile Include="inputs\FSR2_Dx11.cpp" />
-    <ClCompile Include="inputs\FSR2_Vk.cpp" />
-    <ClCompile Include="inputs\XeSS_Dx11.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\al2_proxy.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\fn_util.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\fn_vulkan_hooks.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\log.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\low_latency.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\low_latency_d3d.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\low_latency_tech\ll_antilag2.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\low_latency_tech\ll_antilag_vk.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\low_latency_tech\ll_latencyflex.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\low_latency_tech\ll_xell.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\low_latency_vk.cpp" />
-    <ClCompile Include="nvapi\fakenvapi\nvapi_calls.cpp" />
+    <ClCompile Include="hooks\VulkanwDx12_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hooks\Xell_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="misc\IdentifyGpu.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\FSR2_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\FSR2_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\XeSS_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\al2_proxy.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\fn_util.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\fn_vulkan_hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\log.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\low_latency.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\low_latency_d3d.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\low_latency_tech\ll_antilag2.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\low_latency_tech\ll_antilag_vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\low_latency_tech\ll_latencyflex.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\low_latency_tech\ll_xell.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\low_latency_vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi\nvapi_calls.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClCompile Include="OptiTypes.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="shaders\depth_invert\DI_Dx12.cpp" />
-    <ClCompile Include="shaders\hud_copy\HudCopy_Dx12.cpp" />
-    <ClCompile Include="shaders\depth_transfer\DT_Vk.cpp" />
-    <ClCompile Include="shaders\output_scaling\OS_Vk.cpp" />
-    <ClCompile Include="shaders\rcas\RCAS_Vk.cpp" />
-    <ClCompile Include="shaders\render_ui\RUI_Dx12.cpp" />
-    <ClCompile Include="shaders\resource_copy\RC_Vk.cpp" />
-    <ClCompile Include="shaders\Shader_Dx12.cpp" />
-    <ClCompile Include="shaders\Shader_Vk.cpp" />
-    <ClCompile Include="spoofing\Dxgi_Spoofing.cpp" />
-    <ClCompile Include="spoofing\User32_Spoofing.cpp" />
-    <ClCompile Include="spoofing\Vulkan_Spoofing.cpp" />
-    <ClCompile Include="upscalers\fsr2_212\FSR2Feature_VkOnDx12_212.cpp" />
-    <ClCompile Include="upscalers\fsr31\FSR31Feature_VkOn12.cpp" />
-    <ClCompile Include="upscalers\IFeature_VkwDx12.cpp" />
-    <ClCompile Include="upscaler_time\UpscalerTime_Dx11.cpp" />
-    <ClCompile Include="upscaler_time\UpscalerTime_Dx12.cpp" />
-    <ClCompile Include="upscaler_time\UpscalerTime_Vk.cpp" />
+    <ClCompile Include="shaders\depth_invert\DI_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\hud_copy\HudCopy_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\depth_transfer\DT_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\output_scaling\OS_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\rcas\RCAS_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\render_ui\RUI_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\resource_copy\RC_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\Shader_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\Shader_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="spoofing\Dxgi_Spoofing.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="spoofing\User32_Spoofing.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="spoofing\Vulkan_Spoofing.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr2_212\FSR2Feature_VkOnDx12_212.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr31\FSR31Feature_VkOn12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\IFeature_VkwDx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscaler_time\UpscalerTime_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscaler_time\UpscalerTime_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscaler_time\UpscalerTime_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClCompile Include="wrapped\wrapped_d3d9.cpp" />
-    <ClCompile Include="wrapped\wrapped_factory.cpp" />
-    <ClCompile Include="inputs\FG\FSR3_Dx12_FG.cpp" />
-    <ClCompile Include="inputs\FG\Streamline_Inputs_Dx12.cpp" />
-    <ClCompile Include="framegen\xefg\XeFG_Dx12.cpp" />
-    <ClCompile Include="hooks\Streamline_Hooks.cpp" />
-    <ClCompile Include="hudfix\Hudfix_Dx12.cpp" />
+    <ClCompile Include="wrapped\wrapped_factory.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\FG\FSR3_Dx12_FG.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\FG\Streamline_Inputs_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="framegen\xefg\XeFG_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hooks\Streamline_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hudfix\Hudfix_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClCompile Include="include\imgui\imgui_impl_dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_impl_dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_impl_uwp.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_impl_vulkan.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_impl_win32.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
     <ClCompile Include="include\sl.param\parameters.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
-    <ClCompile Include="inputs\FfxApiExe_Dx12.cpp" />
-    <ClCompile Include="inputs\FG\FfxApi_Dx12_FG.cpp" />
-    <ClCompile Include="inputs\FfxApi_Vk.cpp" />
-    <ClCompile Include="inputs\FG\Upscaler_Inputs_Dx12.cpp" />
-    <ClCompile Include="inputs\XeSS_Base.cpp" />
-    <ClCompile Include="inputs\XeSS_Common.cpp" />
-    <ClCompile Include="inputs\XeSS_Dbg.cpp" />
-    <ClCompile Include="inputs\XeSS_Vulkan.cpp" />
-    <ClCompile Include="misc\FrameLimit.cpp" />
-    <ClCompile Include="nvapi\fakenvapi.cpp" />
-    <ClCompile Include="nvapi\NvApiHooks.cpp" />
-    <ClCompile Include="nvapi\NvApiTypes.cpp" />
-    <ClCompile Include="hooks\Reflex_Hooks.cpp" />
-    <ClCompile Include="resource_tracking\ResTrack_dx12.cpp" />
-    <ClCompile Include="shaders\hudless_compare\HC_Dx12.cpp" />
-    <ClCompile Include="shaders\resource_flip\RF_Dx12.cpp" />
-    <ClCompile Include="shaders\depth_scale\DS_Dx12.cpp" />
-    <ClCompile Include="shaders\depth_transfer\DT_Dx11.cpp" />
-    <ClCompile Include="upscalers\dlssd\DLSSDFeature.cpp" />
-    <ClCompile Include="upscalers\dlssd\DLSSDFeature_Dx11.cpp" />
-    <ClCompile Include="upscalers\dlssd\DLSSDFeature_Dx12.cpp" />
-    <ClCompile Include="upscalers\dlssd\DLSSDFeature_Vk.cpp" />
-    <ClCompile Include="upscalers\dlss\DLSSFeature.cpp" />
-    <ClCompile Include="upscalers\dlss\DLSSFeature_Dx11.cpp" />
-    <ClCompile Include="upscalers\dlss\DLSSFeature_Dx12.cpp" />
-    <ClCompile Include="upscalers\dlss\DLSSFeature_Vk.cpp" />
-    <ClCompile Include="upscalers\FeatureProvider_Dx11.cpp" />
-    <ClCompile Include="upscalers\FeatureProvider_Dx12.cpp" />
-    <ClCompile Include="upscalers\FeatureProvider_Vk.cpp" />
-    <ClCompile Include="upscalers\fsr2_212\FSR2Feature_212.cpp" />
-    <ClCompile Include="upscalers\fsr2_212\FSR2Feature_Dx11On12_212.cpp" />
-    <ClCompile Include="upscalers\fsr2_212\FSR2Feature_Dx12_212.cpp" />
-    <ClCompile Include="upscalers\fsr2_212\FSR2Feature_Vk_212.cpp" />
-    <ClCompile Include="upscalers\fsr31\FSR31Feature.cpp" />
-    <ClCompile Include="upscalers\fsr31\FSR31Feature_Dx11.cpp" />
-    <ClCompile Include="upscalers\fsr31\FSR31Feature_Dx11On12.cpp" />
-    <ClCompile Include="upscalers\fsr31\FSR31Feature_Dx12.cpp" />
-    <ClCompile Include="upscalers\fsr31\FSR31Feature_Vk.cpp" />
-    <ClCompile Include="upscalers\IFeature_Dx11.cpp" />
-    <ClCompile Include="upscalers\IFeature_Dx11wDx12.cpp" />
+    <ClCompile Include="inputs\FfxApiExe_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\FG\FfxApi_Dx12_FG.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\FfxApi_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\FG\Upscaler_Inputs_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\XeSS_Base.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\XeSS_Common.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\XeSS_Dbg.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\XeSS_Vulkan.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="misc\FrameLimit.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\fakenvapi.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\NvApiHooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="nvapi\NvApiTypes.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hooks\Reflex_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="resource_tracking\ResTrack_dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\hudless_compare\HC_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\resource_flip\RF_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\depth_scale\DS_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\depth_transfer\DT_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\dlssd\DLSSDFeature.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\dlssd\DLSSDFeature_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\dlssd\DLSSDFeature_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\dlssd\DLSSDFeature_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\dlss\DLSSFeature.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\dlss\DLSSFeature_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\dlss\DLSSFeature_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\dlss\DLSSFeature_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\FeatureProvider_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\FeatureProvider_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\FeatureProvider_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr2_212\FSR2Feature_212.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr2_212\FSR2Feature_Dx11On12_212.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr2_212\FSR2Feature_Dx12_212.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr2_212\FSR2Feature_Vk_212.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr31\FSR31Feature.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr31\FSR31Feature_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr31\FSR31Feature_Dx11On12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr31\FSR31Feature_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr31\FSR31Feature_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\IFeature_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\IFeature_Dx11wDx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClInclude Include="upscalers\IFeature_Dx11wDx12.h" />
     <ClCompile Include="Config.cpp" />
-    <ClCompile Include="upscalers\fsr2\FSR2Feature.cpp" />
-    <ClCompile Include="upscalers\fsr2\FSR2Feature_Dx11.cpp" />
-    <ClCompile Include="upscalers\fsr2\FSR2Feature_Dx11On12.cpp" />
-    <ClCompile Include="upscalers\fsr2\FSR2Feature_Dx12.cpp" />
-    <ClCompile Include="upscalers\fsr2\FSR2Feature_Vk.cpp" />
-    <ClCompile Include="upscalers\IFeature.cpp" />
-    <ClCompile Include="upscalers\IFeature_Dx12.cpp" />
-    <ClCompile Include="inputs\FfxApi_Dx12.cpp" />
-    <ClCompile Include="inputs\FSR2_Dx12.cpp" />
-    <ClCompile Include="inputs\FSR3_Dx12.cpp" />
-    <ClCompile Include="hooks\D3D11_Hooks.cpp" />
-    <ClCompile Include="hooks\Vulkan_Hooks.cpp" />
-    <ClCompile Include="menu\menu_common.cpp" />
-    <ClCompile Include="menu\menu_dx_base.cpp" />
-    <ClCompile Include="menu\menu_dx11.cpp" />
-    <ClCompile Include="menu\menu_dx12.cpp" />
-    <ClCompile Include="menu\menu_overlay_base.cpp" />
-    <ClCompile Include="menu\menu_overlay_dx.cpp" />
-    <ClCompile Include="menu\menu_overlay_vk.cpp" />
+    <ClCompile Include="upscalers\fsr2\FSR2Feature.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr2\FSR2Feature_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr2\FSR2Feature_Dx11On12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr2\FSR2Feature_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\fsr2\FSR2Feature_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\IFeature.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\IFeature_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\FfxApi_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\FSR2_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\FSR3_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hooks\D3D11_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="hooks\Vulkan_Hooks.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="menu\menu_common.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="menu\menu_dx_base.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="menu\menu_dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="menu\menu_dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="menu\menu_overlay_base.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="menu\menu_overlay_dx.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="menu\menu_overlay_vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClCompile Include="wrapped\wrapped_d3d9_device.cpp" />
-    <ClCompile Include="wrapped\wrapped_swapchain.cpp" />
+    <ClCompile Include="wrapped\wrapped_swapchain.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClCompile Include="include\imgui\imgui.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_draw.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_tables.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
     <ClCompile Include="include\imgui\imgui_widgets.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
     <ClCompile Include="include\imgui\misc\freetype\imgui_freetype.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader Condition="'$(Configuration)'=='Debug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='ReleaseDebug'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)'=='Release'">NotUsing</PrecompiledHeader>
+    
     </ClCompile>
     <ClCompile Include="Logger.cpp" />
-    <ClCompile Include="inputs\NVNGX.cpp" />
-    <ClCompile Include="inputs\NVNGX_DLSS_Dx11.cpp" />
-    <ClCompile Include="inputs\NVNGX_DLSS_Dx12.cpp" />
+    <ClCompile Include="inputs\NVNGX.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\NVNGX_DLSS_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\NVNGX_DLSS_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="inputs\NVNGX_DLSS_Vk.cpp" />
-    <ClCompile Include="upscalers\xess\XeSSFeature.cpp" />
+    <ClCompile Include="inputs\NVNGX_DLSS_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\xess\XeSSFeature.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClInclude Include="upscalers\xess\XeSSFeature.h" />
-    <ClCompile Include="upscalers\xess\XeSSFeature_Dx11.cpp" />
-    <ClCompile Include="upscalers\xess\XeSSFeature_Dx11on12.cpp" />
-    <ClCompile Include="upscalers\xess\XeSSFeature_Dx12.cpp" />
+    <ClCompile Include="upscalers\xess\XeSSFeature_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\xess\XeSSFeature_Dx11on12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\xess\XeSSFeature_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClInclude Include="upscalers\xess\XeSSFeature_Dx12.h" />
     <ClCompile Include="scanner\scanner.cpp" />
-    <ClCompile Include="shaders\bias\Bias_Dx11.cpp" />
-    <ClCompile Include="shaders\bias\Bias_Dx12.cpp" />
-    <ClCompile Include="shaders\format_transfer\FT_Dx12.cpp" />
-    <ClCompile Include="shaders\output_scaling\OS_Dx11.cpp" />
-    <ClCompile Include="shaders\output_scaling\OS_Dx12.cpp" />
-    <ClCompile Include="shaders\rcas\RCAS_Dx11.cpp" />
-    <ClCompile Include="shaders\rcas\RCAS_Dx12.cpp" />
-    <ClCompile Include="upscalers\xess\XeSSFeature_Vk.cpp" />
+    <ClCompile Include="shaders\bias\Bias_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\bias\Bias_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\format_transfer\FT_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\output_scaling\OS_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\output_scaling\OS_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\rcas\RCAS_Dx11.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="shaders\rcas\RCAS_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="upscalers\xess\XeSSFeature_Vk.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
     <ClCompile Include="Util.cpp" />
     <ClCompile Include="version_check.cpp" />
-    <ClCompile Include="inputs\XeSS_Debug.cpp" />
-    <ClCompile Include="inputs\XeSS_Dx12.cpp" />
+    <ClCompile Include="inputs\XeSS_Debug.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
+    <ClCompile Include="inputs\XeSS_Dx12.cpp">
+
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="OptiScaler.rc" />

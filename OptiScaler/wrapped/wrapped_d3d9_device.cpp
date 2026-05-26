@@ -12,11 +12,55 @@ WrappedIDirect3DDevice9Ex::WrappedIDirect3DDevice9Ex(IDirect3DDevice9* real, IDi
     ZeroMemory(&_currentProjection, sizeof(D3DMATRIX));
     ZeroMemory(&_currentView, sizeof(D3DMATRIX));
     ZeroMemory(&_currentWorld, sizeof(D3DMATRIX));
+
+    QuerySampleableDepthFormats();
 }
 
 WrappedIDirect3DDevice9Ex::~WrappedIDirect3DDevice9Ex()
 {
     InvalidateTrackedResources();
+}
+
+// Phase 3 INTZ c1: ask the driver which sampleable-depth FourCC formats it
+// supports. INTZ is the modern one (D24S8 contents readable as a single-channel
+// texture); RAWZ / DF24 / DF16 are vendor / legacy variants kept here for
+// diagnostics in case INTZ is missing.
+void WrappedIDirect3DDevice9Ex::QuerySampleableDepthFormats()
+{
+    IDirect3D9* d3d9 = nullptr;
+    if (FAILED(_real->GetDirect3D(&d3d9)) || d3d9 == nullptr)
+    {
+        LOG_WARN("QuerySampleableDepthFormats: GetDirect3D returned null");
+        return;
+    }
+
+    D3DDEVICE_CREATION_PARAMETERS params = {};
+    if (FAILED(_real->GetCreationParameters(&params)))
+    {
+        LOG_WARN("QuerySampleableDepthFormats: GetCreationParameters failed");
+        d3d9->Release();
+        return;
+    }
+
+    auto check = [&](const char* name, D3DFORMAT fmt) -> bool {
+        const HRESULT hr = d3d9->CheckDeviceFormat(
+            params.AdapterOrdinal,
+            params.DeviceType,
+            _presentParams.BackBufferFormat,
+            D3DUSAGE_DEPTHSTENCIL,
+            D3DRTYPE_SURFACE,
+            fmt);
+        const bool ok = SUCCEEDED(hr);
+        LOG_INFO("Sampleable-depth format {}: {}", name, ok ? "SUPPORTED" : "not supported");
+        return ok;
+    };
+
+    _intzSupported = check("INTZ", static_cast<D3DFORMAT>(MAKEFOURCC('I', 'N', 'T', 'Z')));
+    _rawzSupported = check("RAWZ", static_cast<D3DFORMAT>(MAKEFOURCC('R', 'A', 'W', 'Z')));
+    _df24Supported = check("DF24", static_cast<D3DFORMAT>(MAKEFOURCC('D', 'F', '2', '4')));
+    _df16Supported = check("DF16", static_cast<D3DFORMAT>(MAKEFOURCC('D', 'F', '1', '6')));
+
+    d3d9->Release();
 }
 
 void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()

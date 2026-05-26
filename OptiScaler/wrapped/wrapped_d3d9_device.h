@@ -154,6 +154,7 @@ private:
     void InvalidateTrackedResources();
     void AttemptDepthReadback();
     void ProbeForProjectionMatrix(UINT startRegister, const float* data, UINT vector4fCount);
+    void QuerySampleableDepthFormats();
 
 
     IDirect3DDevice9* _real = nullptr;
@@ -195,4 +196,11 @@ private:
     int _vsConstCallsThisFrame = 0;
     int _projectionMatchCount = 0;
     bool _loggedFirstFrameVSStats = false;
+
+    // Phase 3 INTZ: which sampleable-depth FourCC formats the adapter supports.
+    // Populated once in the constructor via CheckDeviceFormat.
+    bool _intzSupported = false;
+    bool _rawzSupported = false;
+    bool _df24Supported = false;
+    bool _df16Supported = false;
 };

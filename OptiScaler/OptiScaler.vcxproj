@@ -146,7 +146,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <ModuleDefinitionFile>Source_x86.def</ModuleDefinitionFile>
-      <AdditionalDependencies>winhttp.lib;dxguid.lib;d3d9.lib;dxgi.lib;d3d12.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>winhttp.lib;dxguid.lib;d3d9.lib;d3d11.lib;dxgi.lib;d3d12.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -168,7 +168,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <ModuleDefinitionFile>Source_x86.def</ModuleDefinitionFile>
-      <AdditionalDependencies>winhttp.lib;dxguid.lib;d3d9.lib;dxgi.lib;d3d12.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>winhttp.lib;dxguid.lib;d3d9.lib;d3d11.lib;dxgi.lib;d3d12.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDebug|Win32'">
@@ -190,7 +190,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <ModuleDefinitionFile>Source_x86.def</ModuleDefinitionFile>
-      <AdditionalDependencies>winhttp.lib;dxguid.lib;d3d9.lib;dxgi.lib;d3d12.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>winhttp.lib;dxguid.lib;d3d9.lib;d3d11.lib;dxgi.lib;d3d12.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -517,6 +517,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="fsr4\FSR4Upgrade.h" />
     <ClInclude Include="upscalers\IFeature_Dx11.h" />
     <ClInclude Include="upscalers\IFeature_Dx12.h" />
+    <ClInclude Include="upscalers\IFeature_Dx9wDx11.h" />
     <ClInclude Include="upscalers\IFeature.h" />
     <ClInclude Include="upscalers\IFeature_Vk.h" />
     <ClInclude Include="detours\detours.h" />
@@ -1106,6 +1107,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
 
     </ClCompile>
     <ClInclude Include="upscalers\IFeature_Dx11wDx12.h" />
+    <ClCompile Include="upscalers\IFeature_Dx9wDx11.cpp" />
     <ClCompile Include="Config.cpp" />
     <ClCompile Include="upscalers\fsr2\FSR2Feature.cpp">
 

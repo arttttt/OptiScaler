@@ -680,6 +680,9 @@
     <ClInclude Include="upscalers\IFeature_Dx11wDx12.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="upscalers\IFeature_Dx9wDx11.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="upscalers\IFeature_VkwDx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -909,6 +912,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="upscalers\IFeature_Dx11wDx12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="upscalers\IFeature_Dx9wDx11.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="upscalers\IFeature_Dx11.cpp">

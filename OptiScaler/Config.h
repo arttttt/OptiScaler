@@ -259,6 +259,12 @@ class Config
     // depth capture. Matches ReShade's `s_disable_intz` opt-out.
     CustomOptional<bool> Dx9TAA_AutoDepthSubstitution { true };
 
+    // Phase 5a: bridge enable. Default on while we're iterating; turn off if
+    // the DX11 device init or shared-resource path breaks a specific game.
+    // Phase 5b will gate the actual FSR2 dispatch behind this and add a
+    // separate Dx9Upscaler enum once there's something to choose from.
+    CustomOptional<bool> Dx9TAA_Bridge { true };
+
     // CAS
     CustomOptional<bool> RcasEnabled { false };
     CustomOptional<bool> MotionSharpnessEnabled { false };

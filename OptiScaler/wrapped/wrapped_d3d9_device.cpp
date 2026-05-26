@@ -2,6 +2,7 @@
 #include "wrapped_d3d9_device.h"
 
 #include "misc/HaltonSequence.h"
+#include "upscalers/IFeature_Dx9wDx11.h"
 #include "wrapped_d3d9_depthstencil.h"
 
 // DX9 row-major 4x4 multiply: out = a * b, i.e. row-vec * a * b.
@@ -607,6 +608,13 @@ void WrappedIDirect3DDevice9Ex::IdentifySceneDepth()
 
 void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
 {
+    // Phase 5a: bridge owns DEFAULT-pool DX9 resources and a DX11 device. Tear
+    // it down before the underlying device gets reset; rebuild lazily next
+    // Present so the new swap chain dims propagate.
+    _bridge.reset();
+    _bridgeInitTried = false;
+    _bridgeDisabled = false;
+
     ReleaseDepthStatsMap();
 
     if (_trackedDepthSurface)
@@ -1034,6 +1042,44 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
         LogTopDepthStats();
         IdentifySceneDepth();
         AttemptDepthReadback();
+
+        // Phase 5a: round-trip backbuffer through DX11. Lazy init on first
+        // Present so we know the real backbuffer dims / format. Disabled
+        // until Reset if Init fails — no point retrying every frame.
+        if (Config::Instance()->Dx9TAA_Bridge.value_or_default() && !_bridgeDisabled)
+        {
+            IDirect3DSurface9* backbuf = nullptr;
+            if (SUCCEEDED(_real->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backbuf)) && backbuf != nullptr)
+            {
+                if (!_bridgeInitTried)
+                {
+                    _bridgeInitTried = true;
+                    D3DSURFACE_DESC desc = {};
+                    if (SUCCEEDED(backbuf->GetDesc(&desc)))
+                    {
+                        _bridge = std::make_unique<IFeature_Dx9wDx11>();
+                        if (!_bridge->Init(_real, _realEx, desc.Width, desc.Height, desc.Format))
+                        {
+                            _bridge.reset();
+                            _bridgeDisabled = true;
+                            LOG_WARN("Dx9wDx11: bridge init failed — disabled until Reset");
+                        }
+                    }
+                }
+
+                if (_bridge && _bridge->IsInit())
+                {
+                    if (!_bridge->Render(backbuf))
+                    {
+                        LOG_WARN("Dx9wDx11: Render failed — disabling bridge until Reset");
+                        _bridge.reset();
+                        _bridgeDisabled = true;
+                    }
+                }
+
+                backbuf->Release();
+            }
+        }
     }
 
     return _real->Present(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);

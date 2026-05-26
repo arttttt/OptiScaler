@@ -2,8 +2,11 @@
 
 #include <d3d9.h>
 
+#include <memory>
 #include <mutex>
 #include <unordered_map>
+
+class IFeature_Dx9wDx11;
 
 // Per-depth-stencil-surface statistics for ReShade-style scene-depth
 // identification. We accumulate draw / vertex counts each frame and use them
@@ -204,6 +207,14 @@ private:
     D3DMATRIX _currentProjection = {};
     D3DMATRIX _currentView = {};
     D3DMATRIX _currentWorld = {};
+
+    // Phase 5a: DX9→DX11 bridge. Lazy-init on first Present (Dx9TAA on),
+    // destroyed in InvalidateTrackedResources so a Reset rebuilds it against
+    // the new swap chain dims. Forward-declared in the header to keep DX11
+    // out of every translation unit that includes this device wrapper.
+    std::unique_ptr<IFeature_Dx9wDx11> _bridge;
+    bool _bridgeInitTried = false;
+    bool _bridgeDisabled = false;
 
     // Phase 4: cached current/previous ViewProjection for camera-only MV
     // reprojection. Updated at Present, *after* the frame has finished. The

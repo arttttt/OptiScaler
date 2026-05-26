@@ -1,7 +1,31 @@
 # Phase 5: DX9→DX11 Bridge and Upscaler Execution
 
-**Status:** TODO
+**Status:** 5a (color round-trip, no FSR2) shipped. 5b (FSR2 dispatch +
+depth + MV wiring) is TODO.
 **Depends on:** Phases 2, 3, 4
+
+## Current state (5a)
+
+The bridge class `IFeature_Dx9wDx11` owns a DX11 device + two shared color
+textures (in + out) created from the game's D3D9Ex device. On every
+`Present`, when `Dx9TAA` + `Dx9TAA_Bridge` are on:
+
+1. `StretchRect(backbuffer → sharedIn)` (DX9 side)
+2. `IDirect3DQuery9(EVENT)` polled to S_OK so DX11 sees finished writes
+3. DX11 `CopyResource(sharedOut, sharedIn)` + `Flush` — placeholder for
+   the eventual FSR2 dispatch
+4. `StretchRect(sharedOut → backbuffer)` (DX9 side)
+
+If anything in the chain fails (non-Ex device, shared-handle allocation,
+DX11 device creation, `OpenSharedResource`), `_bridgeDisabled` is set
+and the wrapper just passes Present through until the next `Reset`.
+
+**Visual outcome:** screen unchanged. The trip is a smoke test that the
+DX9↔DX11 share works on the user's GPU/driver. First successful frame
+logs `Dx9wDx11: first round-trip ok`.
+
+**Known limitation:** non-Ex devices (most pre-2008 titles, possibly
+NFSU) bail out at Init. The CPU-readback fallback is a 5b task.
 
 ## Goal
 

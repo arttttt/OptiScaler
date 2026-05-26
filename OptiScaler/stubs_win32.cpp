@@ -47,8 +47,9 @@ bool StreamlineHooks::isCommonHooked() { return false; }
 bool StreamlineHooks::isPclHooked() { return false; }
 bool StreamlineHooks::isReflexHooked() { return false; }
 
-void KernelHooks::Hook() {}
-void KernelHooks::HookBase() {}
+// KernelHooks::Hook and HookBase are inline-defined in Kernel_Hooks.h and
+// reference excluded private statics; call sites are guarded with #ifndef
+// _M_IX86 in dllmain.cpp instead.
 
 // spoofing/*
 void User32Spoofing::Hook() {}

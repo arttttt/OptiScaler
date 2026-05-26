@@ -281,8 +281,10 @@ static void CheckWorkingMode()
         if (!_passThruMode && Config::Instance()->EarlyHooking.value_or_default())
         {
             NtdllHooks::Hook();
+#ifndef _M_IX86
             KernelHooks::Hook();
             KernelHooks::HookBase();
+#endif
         }
 
         // version.dll
@@ -657,7 +659,9 @@ static void CheckWorkingMode()
                 if (!_passThruMode)
                 {
                     NtdllHooks::Hook();
+#ifndef _M_IX86
                     KernelHooks::HookBase();
+#endif
                 }
 
                 auto pluginFilePath = pluginPath / L"d3d12.dll";
@@ -836,7 +840,9 @@ static void CheckWorkingMode()
     if (D3d12Proxy::Module() == nullptr)
     {
         // Moved here to cover agility sdk
+#ifndef _M_IX86
         KernelHooks::HookBase();
+#endif
         NtdllHooks::Hook();
 
         LOG_DEBUG("Check for d3d12");
@@ -1087,7 +1093,9 @@ static void CheckWorkingMode()
     if (!Config::Instance()->EarlyHooking.value_or_default())
     {
         NtdllHooks::Hook();
+#ifndef _M_IX86
         KernelHooks::Hook();
+#endif
     }
 
     // For Agility SDK Upgrade

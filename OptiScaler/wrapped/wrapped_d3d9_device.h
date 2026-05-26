@@ -163,4 +163,9 @@ private:
     D3DMATRIX _currentView = {};
     D3DMATRIX _currentWorld = {};
     IDirect3DSurface9* _trackedDepthSurface = nullptr;
+
+    // Phase 2: sub-pixel jitter applied this frame, in pixel space.
+    // Forwarded to the upscaler in later phases.
+    float _jitterX = 0.0f;
+    float _jitterY = 0.0f;
 };

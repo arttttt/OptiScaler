@@ -1,6 +1,8 @@
 #include <pch.h>
 #include "wrapped_d3d9_device.h"
 
+#include "misc/HaltonSequence.h"
+
 WrappedIDirect3DDevice9Ex::WrappedIDirect3DDevice9Ex(IDirect3DDevice9* real, IDirect3DDevice9Ex* realEx, HWND hwnd, D3DPRESENT_PARAMETERS* pPresentParams)
     : _real(real), _realEx(realEx), _hwnd(hwnd)
 {
@@ -285,7 +287,6 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Clear(DWORD Count, CONST D3
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetTransform(D3DTRANSFORMSTATETYPE State, CONST D3DMATRIX* pMatrix)
 {
-    // Tracking stub: save transform matrices for later phases
     if (pMatrix)
     {
         switch (State)
@@ -295,6 +296,29 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetTransform(D3DTRANSFORMST
             break;
         case D3DTS_PROJECTION:
             _currentProjection = *pMatrix;
+
+            if (Config::Instance()->Dx9TAA.value_or_default())
+            {
+                const UINT width = _presentParams.BackBufferWidth;
+                const UINT height = _presentParams.BackBufferHeight;
+
+                if (width > 0 && height > 0)
+                {
+                    // DLAA = scale 1.0 → 8 phases (AMD FSR2 formula ceil(8 * n²))
+                    constexpr int32_t phaseCount = 8;
+                    HaltonSequence::GetJitterOffset(_frameIndex, phaseCount, &_jitterX, &_jitterY);
+
+                    // Y sign is AMD's DX12 reference; DX9 Y-convention may flip — verify visually.
+                    const float clipX = 2.0f * _jitterX / static_cast<float>(width);
+                    const float clipY = -2.0f * _jitterY / static_cast<float>(height);
+
+                    D3DMATRIX jittered = *pMatrix;
+                    jittered._31 += clipX;
+                    jittered._32 += clipY;
+
+                    return _real->SetTransform(State, &jittered);
+                }
+            }
             break;
         case D3DTS_WORLD:
             _currentWorld = *pMatrix;

@@ -182,7 +182,10 @@ private:
     // Phase 3: CPU-side staging copy of the depth surface.
     // Same format / dims as source, D3DPOOL_SYSTEMMEM. Recreated on Reset.
     IDirect3DSurface9* _depthStagingSurface = nullptr;
-    bool _loggedDepthReadback = false;
+    // Separate one-shot flags for distinct outcomes — using a single flag let
+    // an early "skip" path mask later "success" logs from a different code path.
+    bool _loggedReadbackSkip = false;
+    bool _loggedReadbackResult = false;
 
     // Phase 2: sub-pixel jitter applied this frame, in pixel space.
     // Forwarded to the upscaler in later phases.

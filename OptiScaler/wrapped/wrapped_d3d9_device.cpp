@@ -280,7 +280,8 @@ void WrappedIDirect3DDevice9Ex::InvalidateTrackedResources()
         _depthStagingSurface->Release();
         _depthStagingSurface = nullptr;
     }
-    _loggedDepthReadback = false;
+    _loggedReadbackSkip = false;
+    _loggedReadbackResult = false;
 
     if (_intzDepthTexture)
     {
@@ -369,9 +370,9 @@ void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
     // scope for Phase 3 MVP.
     if (_trackedDepthDesc.MultiSampleType != D3DMULTISAMPLE_NONE)
     {
-        if (!_loggedDepthReadback)
+        if (!_loggedReadbackSkip)
         {
-            _loggedDepthReadback = true;
+            _loggedReadbackSkip = true;
             LOG_WARN("Depth readback skipped: MSAA depth surface ({}x{} samples={})",
                      _trackedDepthDesc.Width, _trackedDepthDesc.Height,
                      static_cast<int>(_trackedDepthDesc.MultiSampleType));
@@ -384,9 +385,9 @@ void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
     // didn't intercept its creation.
     if (!_intzDepthTexture)
     {
-        if (!_loggedDepthReadback)
+        if (!_loggedReadbackSkip)
         {
-            _loggedDepthReadback = true;
+            _loggedReadbackSkip = true;
             LOG_WARN("Depth readback skipped: tracked surface is not INTZ-backed (format=0x{:X})",
                      static_cast<uint32_t>(_trackedDepthDesc.Format));
         }
@@ -404,9 +405,9 @@ void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
     HRESULT hr = _real->CreateStateBlock(D3DSBT_ALL, &savedState);
     if (FAILED(hr) || savedState == nullptr)
     {
-        if (!_loggedDepthReadback)
+        if (!_loggedReadbackResult)
         {
-            _loggedDepthReadback = true;
+            _loggedReadbackResult = true;
             LOG_ERROR("CreateStateBlock failed: hr=0x{:08X}", static_cast<uint32_t>(hr));
         }
         return;
@@ -445,9 +446,9 @@ void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
 
     if (FAILED(drawHr))
     {
-        if (!_loggedDepthReadback)
+        if (!_loggedReadbackResult)
         {
-            _loggedDepthReadback = true;
+            _loggedReadbackResult = true;
             LOG_ERROR("Depth-copy DrawPrimitive failed: hr=0x{:08X}", static_cast<uint32_t>(drawHr));
         }
         return;
@@ -466,9 +467,9 @@ void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
 
         if (FAILED(stagingHr))
         {
-            if (!_loggedDepthReadback)
+            if (!_loggedReadbackResult)
             {
-                _loggedDepthReadback = true;
+                _loggedReadbackResult = true;
                 LOG_ERROR("R32F staging CreateOffscreenPlainSurface failed: hr=0x{:08X}",
                           static_cast<uint32_t>(stagingHr));
             }
@@ -478,9 +479,9 @@ void WrappedIDirect3DDevice9Ex::AttemptDepthReadback()
 
     const HRESULT readbackHr = _real->GetRenderTargetData(_depthCopyRTSurface, _depthStagingSurface);
 
-    if (!_loggedDepthReadback)
+    if (!_loggedReadbackResult)
     {
-        _loggedDepthReadback = true;
+        _loggedReadbackResult = true;
 
         if (FAILED(readbackHr))
         {
@@ -744,6 +745,23 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateDepthStencilSurface(U
                 if (_intzDepthTexture)
                     _intzDepthTexture->Release();
                 _intzDepthTexture = intzTex; // keep our ref
+
+                // Force-update tracking to this INTZ surface. Same-size
+                // replacement is skipped by the area heuristic in
+                // SetDepthStencilSurface, so we update directly here.
+                if (_trackedDepthSurface)
+                    _trackedDepthSurface->Release();
+                _trackedDepthSurface = intzSurf;
+                _trackedDepthSurface->AddRef();
+                _trackedDepthArea = Width * Height;
+                _trackedDepthDesc.Width = Width;
+                _trackedDepthDesc.Height = Height;
+                _trackedDepthDesc.Format = intzFormat;
+                _trackedDepthDesc.MultiSampleType = D3DMULTISAMPLE_NONE;
+
+                // Re-arm logs so the next readback attempt reports its outcome.
+                _loggedReadbackSkip = false;
+                _loggedReadbackResult = false;
 
                 *ppSurface = intzSurf; // game owns this ref
 
@@ -1473,6 +1491,19 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateDepthStencilSurfaceEx
                 if (_intzDepthTexture)
                     _intzDepthTexture->Release();
                 _intzDepthTexture = intzTex;
+
+                if (_trackedDepthSurface)
+                    _trackedDepthSurface->Release();
+                _trackedDepthSurface = intzSurf;
+                _trackedDepthSurface->AddRef();
+                _trackedDepthArea = Width * Height;
+                _trackedDepthDesc.Width = Width;
+                _trackedDepthDesc.Height = Height;
+                _trackedDepthDesc.Format = intzFormat;
+                _trackedDepthDesc.MultiSampleType = D3DMULTISAMPLE_NONE;
+
+                _loggedReadbackSkip = false;
+                _loggedReadbackResult = false;
 
                 *ppSurface = intzSurf;
 

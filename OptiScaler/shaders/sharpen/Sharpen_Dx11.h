@@ -38,7 +38,8 @@ class Sharpen_Dx11
 
   public:
     bool CreateBufferResource(ID3D11Device* device, UINT width, UINT height, DXGI_FORMAT format);
-    bool Dispatch(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11Texture2D* input, float sharpness);
+    bool Dispatch(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11Texture2D* input, float sharpness,
+                  int debugMode);
 
     ID3D11Texture2D* Output() { return _output; }
     bool IsInit() const { return _init; }

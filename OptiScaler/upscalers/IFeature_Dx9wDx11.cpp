@@ -212,7 +212,8 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer)
     if (_sharpen && _sharpen->CanRender())
     {
         const float sharpness = Config::Instance()->Dx9TAA_Sharpness.value_or_default();
-        if (_sharpen->Dispatch(_dx11Device, _dx11Context, _sharedInTex11, sharpness))
+        const int   debugMode = Config::Instance()->Dx9TAA_BridgeDebug.value_or_default() ? 1 : 0;
+        if (_sharpen->Dispatch(_dx11Device, _dx11Context, _sharedInTex11, sharpness, debugMode))
             _dx11Context->CopyResource(_sharedOutTex11, _sharpen->Output());
         else
             _dx11Context->CopyResource(_sharedOutTex11, _sharedInTex11);

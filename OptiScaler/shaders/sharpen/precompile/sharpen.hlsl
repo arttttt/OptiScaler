@@ -1,15 +1,20 @@
 cbuffer SharpenConstants : register(b0)
 {
     float Sharpness;
-    float Padding[3];
+    int   DebugMode;       // 0 = sharpen, 1 = invert (unmissable proof-of-path)
+    float Padding[2];
 };
 
 Texture2D<float4>    Source : register(t0);
 RWTexture2D<float4>  Dest   : register(u0);
 
-// 4-tap unsharp mask. Cheap, no temporal state — purpose is to make it
-// visible that the bridge is doing real DX11 work and not just blitting.
-// Replaced by FSR2 dispatch in 5b-followup when the x86 FFX bundle lands.
+// Bridge dispatch CS. Two modes:
+//   DebugMode == 1 → invert colors. Picked by default until the user
+//     confirms the bridge is actually running on their game. Impossible
+//     to mistake for a passthrough.
+//   DebugMode == 0 → 4-tap unsharp mask, controlled by Sharpness. Subtle
+//     by design — turn on after the inversion test passes.
+// Both replaced by FSR2 Evaluate once an x86 FFX bundle exists.
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID)
 {
@@ -21,9 +26,16 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
         return;
 
     float3 c = Source.Load(cp).rgb;
-    float3 n = Source.Load(cp + int3( 0,  1, 0)).rgb;
-    float3 s = Source.Load(cp + int3( 0, -1, 0)).rgb;
-    float3 e = Source.Load(cp + int3( 1,  0, 0)).rgb;
+
+    if (DebugMode == 1)
+    {
+        Dest[dtid.xy] = float4(1.0 - c, 1.0);
+        return;
+    }
+
+    float3 n  = Source.Load(cp + int3( 0,  1, 0)).rgb;
+    float3 s  = Source.Load(cp + int3( 0, -1, 0)).rgb;
+    float3 e  = Source.Load(cp + int3( 1,  0, 0)).rgb;
     float3 w4 = Source.Load(cp + int3(-1,  0, 0)).rgb;
 
     float3 avg   = (n + s + e + w4) * 0.25;

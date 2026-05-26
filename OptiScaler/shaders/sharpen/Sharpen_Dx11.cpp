@@ -92,7 +92,7 @@ bool Sharpen_Dx11::InitializeViews(ID3D11Texture2D* input)
 }
 
 bool Sharpen_Dx11::Dispatch(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11Texture2D* input,
-                            float sharpness)
+                            float sharpness, int debugMode)
 {
     if (!_init || device == nullptr || context == nullptr || input == nullptr || _output == nullptr)
         return false;
@@ -104,6 +104,7 @@ bool Sharpen_Dx11::Dispatch(ID3D11Device* device, ID3D11DeviceContext* context, 
 
     SharpenConstants constants {};
     constants.Sharpness = sharpness;
+    constants.DebugMode = debugMode;
 
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr = context->Map(_constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);

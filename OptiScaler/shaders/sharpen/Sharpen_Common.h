@@ -5,7 +5,8 @@
 struct alignas(16) SharpenConstants
 {
     float Sharpness;
-    float Padding[3];
+    int   DebugMode;         // 0 = sharpen, 1 = invert
+    float Padding[2];
 };
 static_assert(sizeof(SharpenConstants) % 16 == 0, "cbuffer must be 16-byte aligned");
 
@@ -16,7 +17,8 @@ inline static std::string sharpenShaderCode = R"(
 cbuffer SharpenConstants : register(b0)
 {
     float Sharpness;
-    float Padding[3];
+    int   DebugMode;
+    float Padding[2];
 };
 
 Texture2D<float4>   Source : register(t0);
@@ -32,7 +34,14 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
     if (dtid.x >= w || dtid.y >= h)
         return;
 
-    float3 c  = Source.Load(cp).rgb;
+    float3 c = Source.Load(cp).rgb;
+
+    if (DebugMode == 1)
+    {
+        Dest[dtid.xy] = float4(1.0 - c, 1.0);
+        return;
+    }
+
     float3 n  = Source.Load(cp + int3( 0,  1, 0)).rgb;
     float3 s  = Source.Load(cp + int3( 0, -1, 0)).rgb;
     float3 e  = Source.Load(cp + int3( 1,  0, 0)).rgb;

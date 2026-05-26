@@ -251,7 +251,7 @@ class Config
     CustomOptional<bool> MakeDepthCopy { false };
 
     // DX9 DLAA
-    CustomOptional<bool> Dx9TAA { false };
+    CustomOptional<bool> Dx9TAA { true };
 
     // CAS
     CustomOptional<bool> RcasEnabled { false };

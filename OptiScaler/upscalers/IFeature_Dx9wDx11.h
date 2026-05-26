@@ -2,6 +2,10 @@
 #include <d3d9.h>
 #include <d3d11.h>
 
+#include <memory>
+
+class Sharpen_Dx11;
+
 // DX9 → DX11 bridge for the DLAA upscaler path. 32-bit only: DX12 has no
 // x86 runtime and every DX9 game we care about is x86.
 //
@@ -72,6 +76,13 @@ class IFeature_Dx9wDx11
     // GetData(D3DGETDATA_FLUSH) before DX11 reads. DX11 flush happens after
     // CopyResource and before DX9 reads back.
     IDirect3DQuery9* _eventQuery = nullptr;
+
+    // 5b: optional sharpen pass. Replaces the 5a CopyResource — runs a
+    // tiny unsharp-mask CS into its own UAV-bound output, which we then
+    // CopyResource into _sharedOutTex11 (shared resources can't be UAVs
+    // because DX9 has no equivalent bind flag). Owned by unique_ptr so
+    // including the full Sharpen_Dx11 header stays out of consumers.
+    std::unique_ptr<Sharpen_Dx11> _sharpen;
 
     bool _loggedRoundtripOk = false;
 

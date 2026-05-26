@@ -1,6 +1,9 @@
 #include "pch.h"
 #include "IFeature_Dx9wDx11.h"
 
+#include <Config.h>
+#include <shaders/sharpen/Sharpen_Dx11.h>
+
 namespace
 {
     DXGI_FORMAT MapD3D9FormatToDxgi(D3DFORMAT fmt)
@@ -68,8 +71,23 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
         return false;
     }
 
+    // 5b: lazily try to stand up the sharpen pass. Failure here is non-fatal:
+    // the bridge falls back to the 5a CopyResource path so the round-trip
+    // still proves out even if the shader compile breaks on a weird driver.
+    const DXGI_FORMAT sharpenFormat = MapD3D9FormatToDxgi(_gameFormat);
+    if (sharpenFormat != DXGI_FORMAT_UNKNOWN)
+    {
+        _sharpen = std::make_unique<Sharpen_Dx11>("Sharpen", _dx11Device);
+        if (!_sharpen->IsInit() || !_sharpen->CreateBufferResource(_dx11Device, _width, _height, sharpenFormat))
+        {
+            LOG_WARN("Dx9wDx11: sharpen pass init failed — falling back to CopyResource");
+            _sharpen.reset();
+        }
+    }
+
     _init = true;
-    LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X})", _width, _height, static_cast<uint32_t>(_gameFormat));
+    LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X}, sharpen={})", _width, _height,
+             static_cast<uint32_t>(_gameFormat), _sharpen != nullptr ? "on" : "off");
     return true;
 }
 
@@ -189,8 +207,20 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer)
     if (!WaitGpuDx9())
         return false;
 
-    // 3. DX11: trivial in -> out copy. Phase 5b replaces with FSR2 dispatch.
-    _dx11Context->CopyResource(_sharedOutTex11, _sharedInTex11);
+    // 3. DX11: either sharpen pass (5b) or trivial in->out copy (5a fallback).
+    // Both terminate in _sharedOutTex11 ready for the back-StretchRect.
+    if (_sharpen && _sharpen->CanRender())
+    {
+        const float sharpness = Config::Instance()->Dx9TAA_Sharpness.value_or_default();
+        if (_sharpen->Dispatch(_dx11Device, _dx11Context, _sharedInTex11, sharpness))
+            _dx11Context->CopyResource(_sharedOutTex11, _sharpen->Output());
+        else
+            _dx11Context->CopyResource(_sharedOutTex11, _sharedInTex11);
+    }
+    else
+    {
+        _dx11Context->CopyResource(_sharedOutTex11, _sharedInTex11);
+    }
     _dx11Context->Flush();
 
     // 4. DX9: shared out -> backbuffer. After this the screen content matches
@@ -220,6 +250,8 @@ void IFeature_Dx9wDx11::ReleaseAll()
             p = nullptr;
         }
     };
+
+    _sharpen.reset();
 
     safeRelease(_eventQuery);
     safeRelease(_sharedInSurf9);

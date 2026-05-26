@@ -1,20 +1,43 @@
 # Phase 5: DX9→DX11 Bridge and Upscaler Execution
 
-**Status:** 5a (color round-trip, no FSR2) shipped. 5b (FSR2 dispatch +
-depth + MV wiring) is TODO.
+**Status:** 5a (color round-trip) + 5b (stand-in sharpen pass) shipped.
+FSR2 SDK integration deferred — needs an x86 FFX bundle, see "Why not
+FSR2 yet" below. Pipeline-completeness work (depth + MV + jitter wiring)
+continues independently in Phase 7.
 **Depends on:** Phases 2, 3, 4
 
-## Current state (5a)
+## Why not FSR2 yet
+
+`OptiScaler/library/fsr2/*.lib` ships only x64. The bridge is x86 (every
+DX9 game we care about is 32-bit). `optiscaler/FidelityFX-FSR2-DX11`
+builds for Win32 from source but needs CI / submodule work to ship an
+x86 bundle the way the x64 one is shipped today. Tracked as a separate
+task to keep the bridge work moving.
+
+5b uses a 4-tap unsharp-mask CS as the stand-in dispatch — proves the
+bridge does real DX11 work without taking the FFX-bundle dependency. The
+swap point is one line in `Render`: replace
+`sharpen->Dispatch()`+`CopyResource(out, sharpen->Output())` with the
+eventual FSR2 `Evaluate` once the x86 bundle exists.
+
+## Current state (5a + 5b)
 
 The bridge class `IFeature_Dx9wDx11` owns a DX11 device + two shared color
-textures (in + out) created from the game's D3D9Ex device. On every
-`Present`, when `Dx9TAA` + `Dx9TAA_Bridge` are on:
+textures (in + out) created from the game's D3D9Ex device, plus a
+`Sharpen_Dx11` dispatcher that runs an unsharp-mask CS against a DX11-only
+UAV-bound intermediate texture (shared resources can't be UAVs — DX9 has
+no equivalent bind flag). On every `Present`, when `Dx9TAA` +
+`Dx9TAA_Bridge` are on:
 
 1. `StretchRect(backbuffer → sharedIn)` (DX9 side)
 2. `IDirect3DQuery9(EVENT)` polled to S_OK so DX11 sees finished writes
-3. DX11 `CopyResource(sharedOut, sharedIn)` + `Flush` — placeholder for
-   the eventual FSR2 dispatch
+3. DX11: either `Sharpen_Dx11::Dispatch(sharedIn → sharpenOut)` +
+   `CopyResource(sharedOut, sharpenOut)` (5b normal path), or a direct
+   `CopyResource(sharedOut, sharedIn)` (5a fallback if sharpen failed to
+   initialise). `Flush` either way.
 4. `StretchRect(sharedOut → backbuffer)` (DX9 side)
+
+Sharpness amount is controlled by `Dx9TAA_Sharpness` (default `0.5`).
 
 If anything in the chain fails (non-Ex device, shared-handle allocation,
 DX11 device creation, `OpenSharedResource`), `_bridgeDisabled` is set

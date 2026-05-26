@@ -264,6 +264,11 @@ class Config
     // Phase 5b will gate the actual FSR2 dispatch behind this and add a
     // separate Dx9Upscaler enum once there's something to choose from.
     CustomOptional<bool> Dx9TAA_Bridge { true };
+    // Phase 5b stand-in for FSR2: simple unsharp-mask sharpen amount [0..1].
+    // 0 = pass-through (effectively the 5a CopyResource); 0.5 = visible
+    // detail boost; >1 over-sharpens. Replaced by FSR2 sharpness once the
+    // x86 FFX bundle is integrated.
+    CustomOptional<float> Dx9TAA_Sharpness { 0.5f };
 
     // CAS
     CustomOptional<bool> RcasEnabled { false };

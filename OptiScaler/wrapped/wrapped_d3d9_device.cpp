@@ -204,6 +204,11 @@ bool WrappedIDirect3DDevice9Ex::EnsureDepthCopyVB(UINT width, UINT height)
 // supports. INTZ is the modern one (D24S8 contents readable as a single-channel
 // texture); RAWZ / DF24 / DF16 are vendor / legacy variants kept here for
 // diagnostics in case INTZ is missing.
+//
+// AdapterFormat must be the actual display-mode format. Many games create
+// devices in windowed mode with BackBufferFormat=D3DFMT_UNKNOWN, in which
+// case passing it here yields false negatives for every FourCC. We pull the
+// real adapter format via GetAdapterDisplayMode instead.
 void WrappedIDirect3DDevice9Ex::QuerySampleableDepthFormats()
 {
     IDirect3D9* d3d9 = nullptr;
@@ -221,16 +226,33 @@ void WrappedIDirect3DDevice9Ex::QuerySampleableDepthFormats()
         return;
     }
 
+    D3DDISPLAYMODE mode = {};
+    const HRESULT modeHr = d3d9->GetAdapterDisplayMode(params.AdapterOrdinal, &mode);
+    if (FAILED(modeHr))
+    {
+        LOG_WARN("GetAdapterDisplayMode failed: hr=0x{:08X} — falling back to BackBufferFormat=0x{:X}",
+                 static_cast<uint32_t>(modeHr),
+                 static_cast<uint32_t>(_presentParams.BackBufferFormat));
+        mode.Format = _presentParams.BackBufferFormat;
+    }
+
+    LOG_INFO("Querying sampleable-depth formats with adapter={}, devType={}, displayFormat=0x{:X}",
+             params.AdapterOrdinal,
+             static_cast<int>(params.DeviceType),
+             static_cast<uint32_t>(mode.Format));
+
     auto check = [&](const char* name, D3DFORMAT fmt) -> bool {
         const HRESULT hr = d3d9->CheckDeviceFormat(
             params.AdapterOrdinal,
             params.DeviceType,
-            _presentParams.BackBufferFormat,
+            mode.Format,
             D3DUSAGE_DEPTHSTENCIL,
             D3DRTYPE_SURFACE,
             fmt);
         const bool ok = SUCCEEDED(hr);
-        LOG_INFO("Sampleable-depth format {}: {}", name, ok ? "SUPPORTED" : "not supported");
+        LOG_INFO("Sampleable-depth format {}: {} (hr=0x{:08X})", name,
+                 ok ? "SUPPORTED" : "not supported",
+                 static_cast<uint32_t>(hr));
         return ok;
     };
 

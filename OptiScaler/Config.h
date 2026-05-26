@@ -269,12 +269,11 @@ class Config
     // detail boost; >1 over-sharpens. Replaced by FSR2 sharpness once the
     // x86 FFX bundle is integrated.
     CustomOptional<float> Dx9TAA_Sharpness { 0.5f };
-    // Debug mode for the bridge dispatch CS — when true, the pass inverts
-    // pixel colors instead of sharpening. The inversion is impossible to
-    // miss visually and proves the bridge is actively transforming the
-    // backbuffer. Default true so first-launch tests show something
-    // obvious; flip to false after verification to get the sharpen path.
-    CustomOptional<bool> Dx9TAA_BridgeDebug { true };
+    // Debug overlay for the bridge: when true, ClearRenderTargetView paints
+    // the shared output red so it's unmistakable that DX11 is running over
+    // the backbuffer. Default off now that the bridge is verified — flip
+    // to true any time you need to re-confirm the round-trip visually.
+    CustomOptional<bool> Dx9TAA_BridgeDebug { false };
 
     // CAS
     CustomOptional<bool> RcasEnabled { false };

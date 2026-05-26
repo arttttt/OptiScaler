@@ -65,6 +65,7 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
         return false;
     }
 
+    LOG_INFO("Dx9wDx11 Init: about to CreateQuery(EVENT)");
     const HRESULT qhr = _gameDevice->CreateQuery(D3DQUERYTYPE_EVENT, &_eventQuery);
     if (FAILED(qhr) || _eventQuery == nullptr)
     {
@@ -72,24 +73,17 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
         ReleaseAll();
         return false;
     }
+    LOG_INFO("Dx9wDx11 Init: CreateQuery ok");
 
-    // 5b: RTV on the shared output, used by the debug clear-to-red path.
-    // RT bind flag is inherited from D3DUSAGE_RENDERTARGET on the DX9 side
-    // so this view creation is the most boring possible operation.
-    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-    rtvDesc.Format = MapD3D9FormatToDxgi(_gameFormat);
-    rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-    HRESULT rtvHr = _dx11Device->CreateRenderTargetView(_sharedOutTex11, &rtvDesc, &_sharedOutRtv);
-    if (FAILED(rtvHr))
-    {
-        LOG_WARN("Dx9wDx11: shared-out RTV creation failed hr=0x{:08X} — debug clear disabled",
-                 static_cast<uint32_t>(rtvHr));
-        _sharedOutRtv = nullptr;
-    }
+    // 5b RTV: skipped pending diagnosis. Previously this block crashed HL2
+    // hard, killing the process between CreateSharedColor and the next log
+    // emit. Going back to pure 5a behavior (CopyResource round-trip) until
+    // we can identify the failure point with the breadcrumbs above.
+    _sharedOutRtv = nullptr;
 
     _init = true;
-    LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X}, rtv={})", _width, _height,
-             static_cast<uint32_t>(_gameFormat), _sharedOutRtv != nullptr ? "ok" : "none");
+    LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X}, rtv=none-by-design)", _width, _height,
+             static_cast<uint32_t>(_gameFormat));
     return true;
 }
 
@@ -100,10 +94,10 @@ bool IFeature_Dx9wDx11::CreateDx11Device()
     const D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
     D3D_FEATURE_LEVEL got = D3D_FEATURE_LEVEL_11_0;
 
+    // No D3D11_CREATE_DEVICE_DEBUG: the layer's break-on-error policy was
+    // a candidate for the CreateRenderTargetView crash, so we err on the
+    // side of a release-runtime device. Re-enable for targeted debug only.
     UINT flags = 0;
-#ifdef _DEBUG
-    flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
 
     HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, levels, _countof(levels),
                                    D3D11_SDK_VERSION, &_dx11Device, &got, &_dx11Context);

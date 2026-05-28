@@ -299,10 +299,13 @@ class Config
     // unpatched. Override per-game if a title is found to use the top of the
     // constant file.
     CustomOptional<int> Dx9TAA_VsJitterRegister { 250 };
-    // Multiplier on the jitter magnitude. 0 = transform is applied but the
-    // offset is zero (Session 3 identity test: patched shaders must render
-    // exactly like the originals). 1 = full sub-pixel jitter (Session 4+).
-    CustomOptional<float> Dx9TAA_VsJitterStrength { 0.0f };
+    // Multiplier on the jitter magnitude. 0 = transform applied but zero
+    // offset (Session 3 identity test, passed). 1 = true sub-pixel jitter for
+    // a TAA/FSR2 resolve. Session 4 ships an exaggerated 8.0 (~4px wobble at
+    // 1080p) purely so the jitter is unmistakably visible — proving the value
+    // reaches the shader and the direction is right. Calibrate to 1.0 in
+    // Session 5 once confirmed.
+    CustomOptional<float> Dx9TAA_VsJitterStrength { 8.0f };
 
     // CAS
     CustomOptional<bool> RcasEnabled { false };

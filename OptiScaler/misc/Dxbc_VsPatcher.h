@@ -1,5 +1,6 @@
 #pragma once
 #include <d3d9.h>
+#include <string>
 
 // DXBC SM2/SM3 vertex-shader bytecode utilities built on the ported DXVK
 // dxso decoder. Phase 7a shipped Analyze (read-only oPos-write logging);
@@ -46,4 +47,43 @@ class DxbcVsPatcher
     // Session 2 roundtrip verifier and (Session 3) to confirm a transform
     // changed exactly what it intended.
     static StreamCompareResult CompareInstructionStreams(const DWORD* a, const DWORD* b);
+
+    struct RegisterUsage
+    {
+        bool isVertexShader = false;
+        uint32_t major = 0;
+        uint32_t minor = 0;
+        int maxTempRegister = -1;  // highest rN referenced (-1 if none)
+        int maxConstRegister = -1; // highest cN referenced (-1 if none)
+        int posWrites = 0;         // writes to the clip-space position output
+    };
+
+    // Decoder pass over the original bytecode that reports the register
+    // high-water marks and position-write count. Reliable numeric analysis
+    // (vs. text scraping) that BuildJitteredAsm uses to pick a free temp and
+    // confirm the jitter constant register doesn't collide.
+    static RegisterUsage AnalyzeRegisterUsage(const DWORD* code);
+
+    struct JitterTransformResult
+    {
+        bool ok = false;
+        std::string asmText;       // transformed assembly (valid only if ok)
+        const char* failReason = "";
+        int chosenTemp = -1;       // temp register the position was redirected into
+        int posWritesRedirected = 0;
+    };
+
+    // Phase 7 Session 3: text transform that injects sub-pixel jitter. Given
+    // the disassembly of a vertex shader and its register usage, it:
+    //   1. picks a free temp register (maxTemp+1, must fit the SM temp limit),
+    //   2. redirects every write to the clip-space position output (oPos for
+    //      vs_2_0, the dcl_position oN register for vs_3_0) into that temp,
+    //   3. appends `mad <temp>.xy, c<jitterReg>.xy, <temp>.w, <temp>.xy` then
+    //      `mov <pos>, <temp>` so the position is offset by jitter * w (clip
+    //      space, before the perspective divide).
+    // Fails (ok=false, original used) if there's no free temp or the shader
+    // already references c<jitterReg>. The result is meant to be reassembled
+    // by D3DX9Shader::Assemble.
+    static JitterTransformResult BuildJitteredAsm(const std::string& disasm, const RegisterUsage& usage,
+                                                  uint32_t jitterReg);
 };

@@ -76,12 +76,13 @@ HRESULT STDMETHODCALLTYPE WrappedVertexShader9::GetFunction(void* pData, UINT* p
     return _real->GetFunction(pData, pSizeOfData);
 }
 
-void WrappedVertexShader9::SetPatched(IDirect3DVertexShader9* patched, uint32_t jitterConstSlot)
+void WrappedVertexShader9::SetPatched(IDirect3DVertexShader9* patched, uint32_t jitterConstSlot, bool jittered)
 {
     if (_patched != nullptr)
         _patched->Release();
     _patched = patched;
     _jitterConstSlot = jitterConstSlot;
+    _jittered = jittered;
     _state = PatchState::PatchedOk;
 }
 

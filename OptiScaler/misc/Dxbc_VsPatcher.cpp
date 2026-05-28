@@ -3,6 +3,10 @@
 
 #include "dxbc/dxso_decoder.h"
 
+#include <algorithm>
+#include <cctype>
+#include <sstream>
+
 size_t DxbcVsPatcher::BytecodeDwordLength(const DWORD* code)
 {
     if (code == nullptr)
@@ -218,4 +222,181 @@ DxbcVsPatcher::StreamCompareResult DxbcVsPatcher::CompareInstructionStreams(cons
 
         ++index;
     }
+}
+
+DxbcVsPatcher::RegisterUsage DxbcVsPatcher::AnalyzeRegisterUsage(const DWORD* code)
+{
+    RegisterUsage usage;
+    if (code == nullptr)
+        return usage;
+
+    const uint32_t* tokens = reinterpret_cast<const uint32_t*>(code);
+    dxvk::DxsoProgramInfo info;
+    if (!dxvk::DxsoDecodeHeader(tokens[0], info))
+        return usage;
+
+    usage.isVertexShader = (info.type() == dxvk::DxsoProgramType::VertexShader);
+    usage.major = info.majorVersion();
+    usage.minor = info.minorVersion();
+
+    dxvk::DxsoDecodeContext decoder(info);
+    dxvk::DxsoCodeIter iter(tokens + 1);
+
+    auto consider = [&usage](const dxvk::DxsoRegister& reg)
+    {
+        if (reg.id.type == dxvk::DxsoRegisterType::Temp)
+            usage.maxTempRegister = std::max(usage.maxTempRegister, static_cast<int>(reg.id.num));
+        else if (reg.id.type == dxvk::DxsoRegisterType::Const)
+            usage.maxConstRegister = std::max(usage.maxConstRegister, static_cast<int>(reg.id.num));
+    };
+
+    while (decoder.decodeInstruction(iter))
+    {
+        const auto& ctx = decoder.getInstructionContext();
+        const auto op = ctx.instruction.opcode;
+        if (op == dxvk::DxsoOpcode::Comment || op == dxvk::DxsoOpcode::Phase)
+            continue;
+
+        // dst: for `def cN, ...` the destination IS a const register, so this
+        // correctly counts defined constants toward maxConstRegister.
+        consider(ctx.dst);
+        if (ctx.dst.id.type == dxvk::DxsoRegisterType::RasterizerOut &&
+            ctx.dst.id.num == dxvk::RasterOutPosition)
+            usage.posWrites++;
+
+        for (uint32_t i = 0; i < ctx.srcCount && i < ctx.src.size(); ++i)
+            consider(ctx.src[i]);
+    }
+
+    return usage;
+}
+
+namespace
+{
+    bool IsAsmTokenChar(char c)
+    {
+        return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_';
+    }
+
+    // Replaces every whole-token occurrence of `token` in `s` with `repl`,
+    // returning how many were replaced. A "whole token" is bounded by chars
+    // that aren't part of an identifier, so replacing "oPos" never touches a
+    // substring, and replacing "o0" never matches "o1".
+    int ReplaceWholeToken(std::string& s, const std::string& token, const std::string& repl)
+    {
+        int count = 0;
+        size_t pos = 0;
+        while ((pos = s.find(token, pos)) != std::string::npos)
+        {
+            const bool leftOk = (pos == 0) || !IsAsmTokenChar(s[pos - 1]);
+            const size_t end = pos + token.size();
+            const bool rightOk = (end >= s.size()) || !IsAsmTokenChar(s[end]);
+            if (leftOk && rightOk)
+            {
+                s.replace(pos, token.size(), repl);
+                pos += repl.size();
+                ++count;
+            }
+            else
+            {
+                pos += token.size();
+            }
+        }
+        return count;
+    }
+}
+
+DxbcVsPatcher::JitterTransformResult DxbcVsPatcher::BuildJitteredAsm(
+    const std::string& disasm, const RegisterUsage& usage, uint32_t jitterReg)
+{
+    JitterTransformResult r;
+
+    if (!usage.isVertexShader)
+    {
+        r.failReason = "not a vertex shader";
+        return r;
+    }
+
+    // vs_2_0 has 12 temp registers (r0-r11), vs_3_0 has 32 (r0-r31).
+    const int tempLimit = (usage.major >= 3) ? 32 : 12;
+    const int freeTemp = usage.maxTempRegister + 1;
+    if (freeTemp >= tempLimit)
+    {
+        r.failReason = "no free temp register";
+        return r;
+    }
+    if (usage.maxConstRegister >= static_cast<int>(jitterReg))
+    {
+        r.failReason = "shader references jitter const register";
+        return r;
+    }
+
+    // Position output: vs_2_0 writes the named oPos register; vs_3_0 writes
+    // the generic output register declared with dcl_position. Find that
+    // register's name from the disassembly (default oPos for vs_2_0).
+    std::string posReg = "oPos";
+    {
+        size_t p = disasm.find("dcl_position");
+        while (p != std::string::npos)
+        {
+            const size_t after = p + 12; // strlen("dcl_position")
+            // Reject dcl_positiont (PositionT) — the next char must be space.
+            if (after < disasm.size() && (disasm[after] == ' ' || disasm[after] == '\t'))
+            {
+                size_t s = after;
+                while (s < disasm.size() && (disasm[s] == ' ' || disasm[s] == '\t'))
+                    ++s;
+                size_t e = s;
+                while (e < disasm.size() && IsAsmTokenChar(disasm[e]))
+                    ++e;
+                if (e > s)
+                    posReg = disasm.substr(s, e - s);
+                break;
+            }
+            p = disasm.find("dcl_position", p + 1);
+        }
+    }
+
+    const std::string tempName = "r" + std::to_string(freeTemp);
+
+    std::string out;
+    out.reserve(disasm.size() + 128);
+    int redirected = 0;
+
+    std::istringstream stream(disasm);
+    std::string line;
+    while (std::getline(stream, line))
+    {
+        // Don't rewrite inside comments or the dcl_position declaration (the
+        // declaration must keep naming the real output register).
+        const size_t commentPos = line.find("//");
+        std::string code = (commentPos == std::string::npos) ? line : line.substr(0, commentPos);
+        const std::string comment = (commentPos == std::string::npos) ? std::string() : line.substr(commentPos);
+
+        if (code.find("dcl_") == std::string::npos)
+            redirected += ReplaceWholeToken(code, posReg, tempName);
+
+        out += code;
+        out += comment;
+        out += '\n';
+    }
+
+    if (redirected == 0)
+    {
+        r.failReason = "no position writes found";
+        return r;
+    }
+
+    // Offset the clip-space position by jitter * w (so the post-divide NDC
+    // shift is constant in pixels), then write it out. oPos/oN are write-only
+    // in SM2/SM3, which is exactly why the value had to be staged in a temp.
+    out += "mad " + tempName + ".xy, c" + std::to_string(jitterReg) + ".xy, " + tempName + ".w, " + tempName +
+           ".xy\n";
+    out += "mov " + posReg + ", " + tempName + "\n";
+
+    r.ok = true;
+    r.asmText = std::move(out);
+    r.chosenTemp = freeTemp;
+    r.posWritesRedirected = redirected;
+    return r;
 }

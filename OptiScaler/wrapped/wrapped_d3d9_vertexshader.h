@@ -58,10 +58,15 @@ class __declspec(uuid("7B3F2A0C-1D4E-4B5F-8A6C-9E2F3B4D5E6F"))
     uint64_t Hash() const                          { return _hash; }
     const std::vector<DWORD>& OrigBytecode() const { return _origBytecode; }
     uint32_t JitterConstSlot() const               { return _jitterConstSlot; }
+    // True only when the patched variant actually reads the jitter constant —
+    // a plain disasm/asm round-trip (transform-skipped fallback) is patched
+    // but NOT jittered, so the device must not upload to its const slot.
+    bool IsJittered() const                        { return _jittered; }
 
-    // Session 4 calls these once the patcher has produced a valid shader.
-    // Wrapper takes ownership of `patched`; releases it in its dtor.
-    void SetPatched(IDirect3DVertexShader9* patched, uint32_t jitterConstSlot);
+    // Called once the patcher has produced a valid replacement shader. The
+    // wrapper takes ownership of `patched` and releases it in its dtor.
+    // `jittered` says whether `patched` reads `jitterConstSlot` for jitter.
+    void SetPatched(IDirect3DVertexShader9* patched, uint32_t jitterConstSlot, bool jittered);
     void MarkPatchFailed();
 
   private:
@@ -71,6 +76,7 @@ class __declspec(uuid("7B3F2A0C-1D4E-4B5F-8A6C-9E2F3B4D5E6F"))
 
     PatchState _state = PatchState::Untried;
     uint32_t _jitterConstSlot = 0;
+    bool _jittered = false;
 
     std::vector<DWORD> _origBytecode;
     uint64_t _hash = 0;

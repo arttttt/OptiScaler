@@ -283,17 +283,35 @@ private:
     struct CachedVsResult
     {
         bool usable = false;            // true if `bytecode` is a valid replacement
-        std::vector<DWORD> bytecode;    // reassembled (Session 2) / patched (Session 4)
-        uint32_t jitterConstSlot = 0;   // Session 4: which cN holds the jitter
+        bool jittered = false;          // true if the transform injected jitter (vs. plain reassembly)
+        std::vector<DWORD> bytecode;    // reassembled (round-trip) / patched (jitter)
+        uint32_t jitterConstSlot = 0;   // which cN the patched shader reads jitter from
     };
     std::unordered_map<uint64_t, CachedVsResult> _vsProcessCache;
-    int _vsRoundtripLogged = 0;         // cap roundtrip-verify log lines
+    int _vsRoundtripLogged = 0;         // cap process-verify log lines
+    bool _loggedJitterAsmDump = false;  // dump first shader's disasm+transform once
 
-    // Phase 7 Session 2: run the disassemble->assemble round-trip for one
-    // shader, returning the cached result (computed on first sight of the
-    // hash, reused afterwards). Returns nullptr if the round-trip test is
-    // disabled or D3DX9 is unavailable.
-    const CachedVsResult* ProcessVertexShaderRoundtrip(const DWORD* bytecode, size_t dwordLen, uint64_t hash);
+    // Phase 7 Session 2/3: process one vertex shader (jitter transform when
+    // Dx9TAA_VsJitter is on, else plain disasm->asm round-trip), returning
+    // the cached result computed on first sight of the hash and reused
+    // afterwards. Returns nullptr when processing is disabled or D3DX9 is
+    // unavailable.
+    const CachedVsResult* ProcessVertexShader(const DWORD* bytecode, size_t dwordLen, uint64_t hash);
+
+    // Phase 7 Session 3: per-frame jitter offset in clip/NDC units (already
+    // scaled by Dx9TAA_VsJitterStrength and the Y-flip), recomputed each
+    // BeginScene and uploaded to the jitter constant register before each
+    // patched-shader draw.
+    float _jitterClipX = 0.0f;
+    float _jitterClipY = 0.0f;
+    // Highest constant register the game itself writes via
+    // SetVertexShaderConstantF — tracked so we can warn if it ever reaches
+    // our jitter register (a collision that would corrupt the jitter).
+    int _gameMaxVsConstReg = -1;
+    bool _loggedJitterRegCollision = false;
+    // Set once any shader is successfully jittered, so the per-frame upload in
+    // BeginScene only touches the jitter register when something reads it.
+    bool _anyJitteredShader = false;
 
     // Phase 3 Mark 2: per-depth-surface activity tracking (ReShade-style).
     // Each surface bound as depth-stencil gets an entry; Draw* methods bump its

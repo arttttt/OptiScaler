@@ -281,10 +281,28 @@ class Config
     // before any jitter transform is added — with this on the game should
     // render identically, proving disasm/asm/cache/wrapper-bind all work.
     // Needs d3dx9_43.dll (DirectX End-User Runtime); if absent, falls back
-    // to the original shader. Default ON during Phase 7 bring-up so a plain
-    // rebuild runs the test; flip off (or retire) once Session 4's real
-    // jitter transform supersedes it.
-    CustomOptional<bool> Dx9TAA_VsRoundtripTest { true };
+    // to the original shader. Superseded by Dx9TAA_VsJitter once that's on;
+    // kept as a fallback validation path. Default off now Session 2 passed.
+    CustomOptional<bool> Dx9TAA_VsRoundtripTest { false };
+
+    // Phase 7 Session 3+: the real jitter transform. Disassembles each
+    // vertex shader, redirects the clip-space position write into a temp,
+    // appends `mad temp.xy, c<reg>.xy, temp.w, temp.xy` + `mov oPos, temp`,
+    // reassembles, and binds the patched shader. The per-frame jitter is
+    // uploaded to constant register <reg>. Takes precedence over the
+    // round-trip test. Default on during Phase 7 bring-up.
+    CustomOptional<bool> Dx9TAA_VsJitter { true };
+    // Constant register that carries the per-frame jitter (x,y) into patched
+    // shaders. c250 is near the top of the vs_2_0/3_0 constant file where
+    // games almost never allocate (HelixMod reserves c200-c250 the same way).
+    // Shaders that already reference this register or higher are left
+    // unpatched. Override per-game if a title is found to use the top of the
+    // constant file.
+    CustomOptional<int> Dx9TAA_VsJitterRegister { 250 };
+    // Multiplier on the jitter magnitude. 0 = transform is applied but the
+    // offset is zero (Session 3 identity test: patched shaders must render
+    // exactly like the originals). 1 = full sub-pixel jitter (Session 4+).
+    CustomOptional<float> Dx9TAA_VsJitterStrength { 0.0f };
 
     // CAS
     CustomOptional<bool> RcasEnabled { false };

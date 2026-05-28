@@ -122,6 +122,7 @@ namespace dxvk {
     m_ctx.instruction.coissue            = (token & 0x40000000) != 0;
     m_ctx.instruction.specificData.uint32 = (token & 0x00ff0000) >> 16;
     m_ctx.instruction.tokenLength        = this->decodeInstructionLength(token);
+    m_ctx.srcCount                       = 0;
 
     const uint32_t tokenLength = m_ctx.instruction.tokenLength;
 
@@ -138,6 +139,7 @@ namespace dxvk {
             i++;
           sourceIdx++;
         }
+        m_ctx.srcCount = sourceIdx;
         return true;
       }
 
@@ -176,6 +178,7 @@ namespace dxvk {
             sourceIdx++;
           }
         }
+        m_ctx.srcCount = sourceIdx;
         return true;
       }
     }

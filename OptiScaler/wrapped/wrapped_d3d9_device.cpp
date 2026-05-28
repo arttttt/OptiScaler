@@ -1383,6 +1383,46 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::BeginScene()
     // Tracking stub: increment frame index
     _frameIndex++;
 
+    // Phase 7 Session 3: recompute the per-frame jitter offset that patched
+    // vertex shaders read from the jitter constant register. Computed once
+    // per frame here (Halton advances per frame), uploaded per shader bind in
+    // SetVertexShader. Strength 0 => zero offset (the identity test).
+    if (Config::Instance()->Dx9TAA.value_or_default() && Config::Instance()->Dx9TAA_VsJitter.value_or_default())
+    {
+        const UINT width = _presentParams.BackBufferWidth;
+        const UINT height = _presentParams.BackBufferHeight;
+        const float strength = Config::Instance()->Dx9TAA_VsJitterStrength.value_or_default();
+
+        if (width > 0 && height > 0 && strength != 0.0f)
+        {
+            constexpr int32_t phaseCount = 8; // DLAA = scale 1.0
+            HaltonSequence::GetJitterOffset(_frameIndex, phaseCount, &_jitterX, &_jitterY);
+
+            // NDC offset = pixels * 2 / dimension; Y flipped (DX clip Y is up).
+            // Same formula Phase 2 used on the projection matrix. Multiplied by
+            // clip w in the shader so the post-divide NDC shift is constant.
+            _jitterClipX = strength * 2.0f * _jitterX / static_cast<float>(width);
+            _jitterClipY = strength * -2.0f * _jitterY / static_cast<float>(height);
+        }
+        else
+        {
+            _jitterClipX = 0.0f;
+            _jitterClipY = 0.0f;
+        }
+
+        // Upload once per frame to the jitter register so a shader that's
+        // bound once and reused across frames still gets a fresh value.
+        // SetVertexShader re-uploads per bind on top of this for robustness
+        // against mid-frame state-block restores. Only once something is
+        // actually jittered, so we don't touch the register otherwise.
+        if (_anyJitteredShader)
+        {
+            const float jitter[4] = { _jitterClipX, _jitterClipY, 0.0f, 0.0f };
+            const UINT jitterReg = static_cast<UINT>(Config::Instance()->Dx9TAA_VsJitterRegister.value_or_default());
+            _real->SetVertexShaderConstantF(jitterReg, jitter, 1);
+        }
+    }
+
     return _real->BeginScene();
 }
 
@@ -1743,25 +1783,26 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateVertexShader(CONST DW
         }
         _vsWrappedCount++;
 
-        // Phase 7 Session 2: when the round-trip test is on, disassemble +
-        // reassemble the bytecode (cached by hash) and bind the reassembled
-        // — but NOT transformed — variant. If the game still renders
-        // identically, the whole patch pipeline is proven before Session 3
-        // adds the jitter transform.
-        if (dwordLen > 0 && Config::Instance()->Dx9TAA_VsRoundtripTest.value_or_default())
+        // Phase 7 Session 2/3: process the shader — inject jitter when
+        // Dx9TAA_VsJitter is on, otherwise (round-trip test) just reassemble
+        // it. Either way the result is cached by hash; bind it as the
+        // wrapper's patched variant so the device runs it instead of _real.
+        const bool processEnabled = Config::Instance()->Dx9TAA_VsJitter.value_or_default() ||
+                                    Config::Instance()->Dx9TAA_VsRoundtripTest.value_or_default();
+        if (dwordLen > 0 && processEnabled)
         {
-            const CachedVsResult* processed = ProcessVertexShaderRoundtrip(pFunction, dwordLen, hash);
+            const CachedVsResult* processed = ProcessVertexShader(pFunction, dwordLen, hash);
             if (processed != nullptr && processed->usable)
             {
-                IDirect3DVertexShader9* reassembled = nullptr;
-                const HRESULT rhr = _real->CreateVertexShader(processed->bytecode.data(), &reassembled);
-                if (SUCCEEDED(rhr) && reassembled != nullptr)
+                IDirect3DVertexShader9* patched = nullptr;
+                const HRESULT rhr = _real->CreateVertexShader(processed->bytecode.data(), &patched);
+                if (SUCCEEDED(rhr) && patched != nullptr)
                 {
-                    wrapper->SetPatched(reassembled, processed->jitterConstSlot);
+                    wrapper->SetPatched(patched, processed->jitterConstSlot, processed->jittered);
                 }
                 else
                 {
-                    LOG_WARN("Phase 7 Session 2: CreateVertexShader on reassembled bytecode failed "
+                    LOG_WARN("Phase 7: CreateVertexShader on processed bytecode failed "
                              "(hash=0x{:016X}, hr=0x{:08X}) — using original", hash, static_cast<uint32_t>(rhr));
                     wrapper->MarkPatchFailed();
                 }
@@ -1781,23 +1822,23 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateVertexShader(CONST DW
     return hr;
 }
 
-// Phase 7 Session 2: disassemble -> reassemble one vertex shader and verify
-// the round-trip is faithful, caching the result by bytecode hash. Returns
-// the cached entry (usable=true when the reassembled bytecode is a valid
-// stand-in for the original). The reassembled bytecode is NOT transformed —
-// this exists purely to validate the D3DX9 pipeline + wrapper bind path
-// before the jitter transform lands in Session 3.
-const WrappedIDirect3DDevice9Ex::CachedVsResult* WrappedIDirect3DDevice9Ex::ProcessVertexShaderRoundtrip(
+// Phase 7 Session 2/3: process one vertex shader — disassemble, optionally
+// inject jitter, reassemble — caching the result by bytecode hash. Returns
+// the cached entry (usable=true when the produced bytecode is a valid
+// stand-in for the original). On any pipeline failure it caches an unusable
+// result so the wrapper falls back to the original shader.
+const WrappedIDirect3DDevice9Ex::CachedVsResult* WrappedIDirect3DDevice9Ex::ProcessVertexShader(
     const DWORD* bytecode, size_t dwordLen, uint64_t hash)
 {
     // Cache hit — duplicate shader (HL2 creates some twice). Skip the
-    // expensive disasm/asm entirely.
+    // expensive disasm/transform/asm entirely.
     auto it = _vsProcessCache.find(hash);
     if (it != _vsProcessCache.end())
     {
         if (_vsRoundtripLogged < 8)
         {
-            LOG_INFO("Phase 7 Session 2: cache hit hash=0x{:016X} (usable={})", hash, it->second.usable);
+            LOG_INFO("Phase 7: cache hit hash=0x{:016X} (usable={}, jittered={})", hash, it->second.usable,
+                     it->second.jittered);
             _vsRoundtripLogged++;
         }
         return &it->second;
@@ -1814,45 +1855,77 @@ const WrappedIDirect3DDevice9Ex::CachedVsResult* WrappedIDirect3DDevice9Ex::Proc
     std::string asmText;
     if (!D3DX9Shader::Disassemble(bytecode, asmText))
     {
-        LOG_WARN("Phase 7 Session 2: disassemble failed hash=0x{:016X} — using original", hash);
+        LOG_WARN("Phase 7: disassemble failed hash=0x{:016X} — using original", hash);
         return &_vsProcessCache.emplace(hash, std::move(result)).first->second;
     }
 
-    std::vector<DWORD> reassembled;
-    std::string asmError;
-    if (!D3DX9Shader::Assemble(asmText, reassembled, asmError))
+    std::string finalAsm = asmText;
+    bool jittered = false;
+    uint32_t jitterReg = 0;
+
+    if (Config::Instance()->Dx9TAA_VsJitter.value_or_default())
     {
-        LOG_WARN("Phase 7 Session 2: reassemble failed hash=0x{:016X}: {} — using original", hash, asmError);
-        return &_vsProcessCache.emplace(hash, std::move(result)).first->second;
+        jitterReg = static_cast<uint32_t>(Config::Instance()->Dx9TAA_VsJitterRegister.value_or_default());
+        const auto usage = DxbcVsPatcher::AnalyzeRegisterUsage(bytecode);
+        auto transform = DxbcVsPatcher::BuildJitteredAsm(asmText, usage, jitterReg);
+
+        // Dump the first shader's disassembly + transform so we can eyeball
+        // that the redirect + appended mad/mov are correct on real bytecode.
+        if (!_loggedJitterAsmDump)
+        {
+            _loggedJitterAsmDump = true;
+            LOG_INFO("Phase 7 Session 3: first VS usage vs_{}_{} maxTemp={} maxConst={} posWrites={}",
+                     usage.major, usage.minor, usage.maxTempRegister, usage.maxConstRegister, usage.posWrites);
+            LOG_INFO("Phase 7 Session 3: --- disassembly ---\n{}", asmText);
+            if (transform.ok)
+                LOG_INFO("Phase 7 Session 3: --- jittered (temp r{}, {} pos writes -> c{}) ---\n{}",
+                         transform.chosenTemp, transform.posWritesRedirected, jitterReg, transform.asmText);
+            else
+                LOG_WARN("Phase 7 Session 3: transform failed: {}", transform.failReason);
+        }
+
+        if (transform.ok)
+        {
+            finalAsm = std::move(transform.asmText);
+            jittered = true;
+        }
+        else if (_vsRoundtripLogged < 8)
+        {
+            LOG_WARN("Phase 7: jitter skipped hash=0x{:016X} ({}) — reassembling unmodified", hash,
+                     transform.failReason);
+        }
     }
 
-    // Compare the instruction streams (comments/CTAB excluded) so we know the
-    // round-trip preserved the actual ops.
-    const auto cmp = DxbcVsPatcher::CompareInstructionStreams(bytecode, reassembled.data());
+    std::vector<DWORD> assembled;
+    std::string asmError;
+    if (!D3DX9Shader::Assemble(finalAsm, assembled, asmError))
+    {
+        LOG_WARN("Phase 7: assemble failed hash=0x{:016X}: {} — using original", hash, asmError);
+        return &_vsProcessCache.emplace(hash, std::move(result)).first->second;
+    }
 
     if (_vsRoundtripLogged < 8)
     {
-        if (cmp.equal)
+        if (jittered)
         {
-            LOG_INFO("Phase 7 Session 2: round-trip OK hash=0x{:016X} ({} dwords -> {} dwords, {} ops identical)",
-                     hash, dwordLen, reassembled.size(), cmp.instructionCount);
+            LOG_INFO("Phase 7 Session 3: jittered hash=0x{:016X} ({} -> {} dwords, reg c{})", hash, dwordLen,
+                     assembled.size(), jitterReg);
         }
         else
         {
-            LOG_WARN("Phase 7 Session 2: round-trip DIVERGED hash=0x{:016X} at op {} ({}) — binding anyway "
-                     "to test driver acceptance", hash, cmp.firstDivergenceIndex, cmp.divergenceKind);
+            const auto cmp = DxbcVsPatcher::CompareInstructionStreams(bytecode, assembled.data());
+            LOG_INFO("Phase 7: round-trip hash=0x{:016X} ({} -> {} dwords, {})", hash, dwordLen, assembled.size(),
+                     cmp.equal ? "ops identical" : cmp.divergenceKind);
         }
         _vsRoundtripLogged++;
     }
 
-    // Even on instruction-stream divergence we still mark it usable: the
-    // reassembled bytecode is what D3DX produced from the game's own shader,
-    // so it should be driver-valid. Binding it stresses the full path; if it
-    // visibly breaks the game, that's exactly the signal we want from the
-    // test before relying on the pipeline in Session 3+.
     result.usable = true;
-    result.bytecode = std::move(reassembled);
-    result.jitterConstSlot = 0;
+    result.jittered = jittered;
+    result.bytecode = std::move(assembled);
+    result.jitterConstSlot = jitterReg;
+    if (jittered)
+        _anyJitteredShader = true;
 
     return &_vsProcessCache.emplace(hash, std::move(result)).first->second;
 }
@@ -1867,6 +1940,16 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetVertexShader(IDirect3DVe
     if (pShader != nullptr &&
         SUCCEEDED(pShader->QueryInterface(__uuidof(WrappedVertexShader9), reinterpret_cast<void**>(&wrapper))))
     {
+        // Phase 7 Session 3: for a jittered shader, refresh the jitter constant
+        // right before binding so the patched mad reads this frame's offset.
+        // Only jittered shaders read it — a plain reassembly's slot would be
+        // c0, which we must never clobber.
+        if (wrapper->IsJittered())
+        {
+            const float jitter[4] = { _jitterClipX, _jitterClipY, 0.0f, 0.0f };
+            _real->SetVertexShaderConstantF(wrapper->JitterConstSlot(), jitter, 1);
+        }
+
         IDirect3DVertexShader9* effective = wrapper->EffectiveShader();
         HRESULT hr = _real->SetVertexShader(effective);
 
@@ -1911,6 +1994,26 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetVertexShaderConstantF(UI
     {
         _vsConstCallsThisFrame++;
         ProbeForProjectionMatrix(StartRegister, pConstantData, Vector4fCount);
+
+        // Phase 7 Session 3: track the highest constant register the game
+        // itself writes (our own jitter upload goes straight to _real, so it
+        // isn't counted here). If the game ever reaches the jitter register,
+        // our injected reads collide with the game's data — warn once so we
+        // know to pick a different register for that title.
+        if (Config::Instance()->Dx9TAA_VsJitter.value_or_default() && Vector4fCount > 0)
+        {
+            const int highest = static_cast<int>(StartRegister + Vector4fCount - 1);
+            if (highest > _gameMaxVsConstReg)
+                _gameMaxVsConstReg = highest;
+
+            const int jitterReg = Config::Instance()->Dx9TAA_VsJitterRegister.value_or_default();
+            if (!_loggedJitterRegCollision && highest >= jitterReg)
+            {
+                _loggedJitterRegCollision = true;
+                LOG_WARN("Phase 7: game writes VS const c{} >= jitter register c{} — COLLISION, pick a higher "
+                         "Dx9TAA_VsJitterRegister for this game", highest, jitterReg);
+            }
+        }
     }
 
     return _real->SetVertexShaderConstantF(StartRegister, pConstantData, Vector4fCount);

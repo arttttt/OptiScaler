@@ -183,6 +183,7 @@ namespace dxvk {
     DxsoRegister                                   pred;
     DxsoRegister                                   dst;
     std::array<DxsoRegister, DxsoMaxOperandCount>  src;
+    uint32_t                                       srcCount; // valid entries in src
     DxsoDefinition                                 def;
     DxsoDeclaration                                dcl;
   };

@@ -1081,7 +1081,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
 
                 if (_bridge && _bridge->IsInit())
                 {
-                    if (!_bridge->Render(backbuf))
+                    if (!_bridge->Render(backbuf, _depthCopyRTSurface))
                     {
                         LOG_WARN("Dx9wDx11: Render failed — disabling bridge until Reset");
                         _bridge.reset();

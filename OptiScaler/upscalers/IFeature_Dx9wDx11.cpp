@@ -82,6 +82,11 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
         return false;
     }
 
+    // Non-fatal: if the depth share can't be set up, the bridge still does
+    // its round-trip; FSR2 just won't have a depth input until it's fixed.
+    if (!CreateSharedDepth())
+        LOG_WARN("Dx9wDx11: shared depth unavailable — FSR2 will lack depth");
+
     const HRESULT qhr = _gameDevice->CreateQuery(D3DQUERYTYPE_EVENT, &_eventQuery);
     if (FAILED(qhr) || _eventQuery == nullptr)
     {
@@ -188,6 +193,41 @@ bool IFeature_Dx9wDx11::CreateSharedColor()
     return true;
 }
 
+// 5b: shared R32F scene depth, DX9 -> DX11. The Phase 3 depth-copy already
+// produces R32F, so the per-frame StretchRect into this is a same-format
+// copy. RENDERTARGET usage makes it both a valid StretchRect destination and
+// openable as a DX11 SRV for FSR2.
+bool IFeature_Dx9wDx11::CreateSharedDepth()
+{
+    HANDLE shared = nullptr;
+    HRESULT hr = _gameDeviceEx->CreateTexture(_width, _height, 1, D3DUSAGE_RENDERTARGET, D3DFMT_R32F,
+                                              D3DPOOL_DEFAULT, &_sharedDepthTex9, &shared);
+    if (FAILED(hr) || _sharedDepthTex9 == nullptr || shared == nullptr)
+    {
+        LOG_ERROR("Dx9wDx11: CreateTexture(SHARED depth R32F) failed hr=0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    hr = _sharedDepthTex9->GetSurfaceLevel(0, &_sharedDepthSurf9);
+    if (FAILED(hr) || _sharedDepthSurf9 == nullptr)
+    {
+        LOG_ERROR("Dx9wDx11: GetSurfaceLevel(depth) failed hr=0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    _sharedDepthHandle = shared;
+
+    hr = _dx11Device->OpenSharedResource(shared, IID_PPV_ARGS(&_sharedDepthTex11));
+    if (FAILED(hr) || _sharedDepthTex11 == nullptr)
+    {
+        LOG_ERROR("Dx9wDx11: OpenSharedResource(depth) failed hr=0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    LOG_DEBUG("Dx9wDx11: shared R32F depth created (handle={})", _sharedDepthHandle);
+    return true;
+}
+
 bool IFeature_Dx9wDx11::WaitGpuDx9()
 {
     if (_eventQuery == nullptr)
@@ -214,7 +254,7 @@ bool IFeature_Dx9wDx11::WaitGpuDx9()
     return false;
 }
 
-bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer)
+bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurface9* gameDepthR32f)
 {
     if (!_init || gameBackbuffer == nullptr)
         return false;
@@ -225,6 +265,23 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer)
     {
         LOG_ERROR("Dx9wDx11: StretchRect(backbuf -> in) failed hr=0x{:08X}", static_cast<uint32_t>(hr));
         return false;
+    }
+
+    // 1b. DX9: scene depth -> shared depth (R32F same-format copy). Skipped
+    // when no depth was identified this frame. Done before the sync so the
+    // single WaitGpuDx9 covers both color and depth.
+    if (gameDepthR32f != nullptr && _sharedDepthSurf9 != nullptr)
+    {
+        HRESULT dhr = _gameDevice->StretchRect(gameDepthR32f, nullptr, _sharedDepthSurf9, nullptr, D3DTEXF_POINT);
+        if (!_loggedDepthShare)
+        {
+            _loggedDepthShare = true;
+            if (SUCCEEDED(dhr))
+                LOG_INFO("Dx9wDx11: scene depth bridged to DX11 (R32F)");
+            else
+                LOG_WARN("Dx9wDx11: StretchRect(depth -> shared) failed hr=0x{:08X} — FSR2 depth stale",
+                         static_cast<uint32_t>(dhr));
+        }
     }
 
     // 2. Sync: drain DX9 pipeline so DX11 sees finished writes.
@@ -343,10 +400,14 @@ void IFeature_Dx9wDx11::ReleaseAll()
     safeRelease(_sharedOutTex9);
     safeRelease(_sharedInTex11);
     safeRelease(_sharedOutTex11);
+    safeRelease(_sharedDepthSurf9);
+    safeRelease(_sharedDepthTex9);
+    safeRelease(_sharedDepthTex11);
     safeRelease(_dx11Context);
     safeRelease(_dx11Device);
 
     _sharedInHandle = nullptr;
     _sharedOutHandle = nullptr;
+    _sharedDepthHandle = nullptr;
     _init = false;
 }

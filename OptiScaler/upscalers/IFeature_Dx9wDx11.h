@@ -37,8 +37,11 @@ class IFeature_Dx9wDx11
 
     // Round-trip the game's backbuffer through DX11. Returns false on any
     // failure; caller treats failure as "no bridge this frame" and just
-    // calls the real Present without intervention.
-    bool Render(IDirect3DSurface9* gameBackbuffer);
+    // calls the real Present without intervention. gameDepthR32f is the
+    // Phase 3 depth-copy output (R32F render target) or null when no scene
+    // depth was identified this frame — it gets bridged to DX11 as the FSR2
+    // depth input.
+    bool Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurface9* gameDepthR32f);
 
     bool IsInit() const { return _init; }
     UINT Width() const { return _width; }
@@ -77,6 +80,15 @@ class IFeature_Dx9wDx11
     HANDLE _sharedOutHandle = nullptr;
     ID3D11Texture2D* _sharedOutTex11 = nullptr;
 
+    // 5b: shared R32F scene depth — the Phase 3 depth-copy output bridged
+    // DX9 -> DX11 (same mechanism as color) so FSR2 can read it as its depth
+    // input. StretchRect'd from the passed depth surface each Render.
+    IDirect3DTexture9* _sharedDepthTex9 = nullptr;
+    IDirect3DSurface9* _sharedDepthSurf9 = nullptr;
+    HANDLE _sharedDepthHandle = nullptr;
+    ID3D11Texture2D* _sharedDepthTex11 = nullptr;
+    bool _loggedDepthShare = false;
+
     // DX9 sync: event query gets issued after StretchRect-in and we poll
     // GetData(D3DGETDATA_FLUSH) before DX11 reads. DX11 flush happens after
     // CopyResource and before DX9 reads back.
@@ -105,6 +117,7 @@ class IFeature_Dx9wDx11
 
     bool CreateDx11Device();
     bool CreateSharedColor();
+    bool CreateSharedDepth();
     bool InitFsr2();
     bool WaitGpuDx9();
     void ReleaseAll();

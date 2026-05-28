@@ -5,6 +5,7 @@
 #include <memory>
 
 class Sharpen_Dx11;
+struct Dx9wDx11Fsr2State;
 
 // DX9 → DX11 bridge for the DLAA upscaler path. 32-bit only: DX12 has no
 // x86 runtime and every DX9 game we care about is x86.
@@ -92,10 +93,19 @@ class IFeature_Dx9wDx11
     // will replace the clear-to-red proof. Currently not constructed.
     std::unique_ptr<Sharpen_Dx11> _sharpen;
 
+    // 5b: FSR2 context on the bridge's DX11 device, via the raw ffx_fsr2 API.
+    // Pimpl'd (struct defined in the .cpp) so the ffx headers don't leak into
+    // every TU that includes this header — same reason _sharpen is
+    // forward-declared. We use the raw API rather than FSR2FeatureDx11 because
+    // that wrapper drags the whole IFeature / menu / RCAS stack into the
+    // 32-bit build. Created at Init (non-fatal), destroyed in ReleaseAll.
+    std::unique_ptr<Dx9wDx11Fsr2State> _fsr2;
+
     bool _loggedRoundtripOk = false;
 
     bool CreateDx11Device();
     bool CreateSharedColor();
+    bool InitFsr2();
     bool WaitGpuDx9();
     void ReleaseAll();
 };

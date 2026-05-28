@@ -4,6 +4,23 @@
 #include <Config.h>
 #include <shaders/sharpen/Sharpen_Dx11.h>
 
+#include <fsr2/ffx_fsr2.h>
+#include <fsr2/dx11/ffx_fsr2_dx11.h>
+
+#include <vector>
+
+// Pimpl for the FSR2 context (see the header for why it's hidden here). The
+// scratch buffer backs the FSR2 interface for the context's whole lifetime,
+// so it must outlive the context — ReleaseAll destroys the context before
+// this struct (and its scratch) is freed.
+struct Dx9wDx11Fsr2State
+{
+    FfxFsr2Context context {};
+    FfxFsr2ContextDescription desc {};
+    std::vector<uint8_t> scratch;
+    bool created = false;
+};
+
 namespace
 {
     DXGI_FORMAT MapD3D9FormatToDxgi(D3DFORMAT fmt)
@@ -86,6 +103,11 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
         _sharedOutRtv = nullptr;
     }
     LOG_INFO("Dx9wDx11 Init: CreateRenderTargetView done (rtv={})", _sharedOutRtv != nullptr ? "ok" : "null");
+
+    // Phase 5b: stand up the FSR2 context on the bridge's DX11 device. Raw
+    // ffx_fsr2 API (see header). Non-fatal — if FSR2 can't init the bridge
+    // still does its round-trip; the per-frame dispatch lands next.
+    InitFsr2();
 
     _init = true;
     LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X}, rtv={})", _width, _height,
@@ -243,6 +265,55 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer)
     return true;
 }
 
+// Phase 5b: create the FSR2 context on the bridge's DX11 device via the raw
+// ffx_fsr2 API. DLAA = no upscaling, so render size == display size == the
+// backbuffer size. Non-fatal: returns false (and leaves _fsr2 null) on any
+// failure; the caller logs and keeps the bridge round-trip alive.
+bool IFeature_Dx9wDx11::InitFsr2()
+{
+    if (_dx11Device == nullptr)
+        return false;
+
+    _fsr2 = std::make_unique<Dx9wDx11Fsr2State>();
+
+    const size_t scratchSize = ffxFsr2GetScratchMemorySizeDX11();
+    _fsr2->scratch.resize(scratchSize);
+
+    FfxErrorCode err =
+        ffxFsr2GetInterfaceDX11(&_fsr2->desc.callbacks, _dx11Device, _fsr2->scratch.data(), scratchSize);
+    if (err != FFX_OK)
+    {
+        LOG_WARN("Dx9wDx11: ffxFsr2GetInterfaceDX11 failed ({}) — FSR2 off, bridge keeps round-trip",
+                 static_cast<int>(err));
+        _fsr2.reset();
+        return false;
+    }
+
+    _fsr2->desc.device = ffxGetDeviceDX11(_dx11Device);
+    // Auto-exposure is the safe default; depth-inverted / HDR get calibrated
+    // with the per-frame dispatch once real inputs flow in.
+    _fsr2->desc.flags = FFX_FSR2_ENABLE_AUTO_EXPOSURE;
+    _fsr2->desc.maxRenderSize.width = _width;
+    _fsr2->desc.maxRenderSize.height = _height;
+    _fsr2->desc.displaySize.width = _width;   // DLAA: 1:1, no upscaling
+    _fsr2->desc.displaySize.height = _height;
+    _fsr2->desc.fpMessage = nullptr;
+
+    err = ffxFsr2ContextCreate(&_fsr2->context, &_fsr2->desc);
+    if (err != FFX_OK)
+    {
+        LOG_WARN("Dx9wDx11: ffxFsr2ContextCreate failed ({}) — FSR2 off, bridge keeps round-trip",
+                 static_cast<int>(err));
+        _fsr2.reset();
+        return false;
+    }
+
+    _fsr2->created = true;
+    LOG_INFO("Dx9wDx11: FSR2 context created (DLAA {}x{}, scratch {} KB) — x86 FSR2 is live", _width, _height,
+             static_cast<uint32_t>(scratchSize / 1024));
+    return true;
+}
+
 void IFeature_Dx9wDx11::ReleaseAll()
 {
     auto safeRelease = [](auto*& p) {
@@ -252,6 +323,15 @@ void IFeature_Dx9wDx11::ReleaseAll()
             p = nullptr;
         }
     };
+
+    // FSR2 first: its callbacks reference the DX11 device, which is released
+    // below, so the context must be destroyed while the device is still alive.
+    if (_fsr2 != nullptr)
+    {
+        if (_fsr2->created)
+            ffxFsr2ContextDestroy(&_fsr2->context);
+        _fsr2.reset();
+    }
 
     _sharpen.reset();
 

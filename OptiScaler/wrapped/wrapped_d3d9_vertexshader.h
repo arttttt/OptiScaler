@@ -58,6 +58,12 @@ class __declspec(uuid("7B3F2A0C-1D4E-4B5F-8A6C-9E2F3B4D5E6F"))
     uint64_t Hash() const                          { return _hash; }
     const std::vector<DWORD>& OrigBytecode() const { return _origBytecode; }
     uint32_t JitterConstSlot() const               { return _jitterConstSlot; }
+    // Constant register where this shader's view/model-view-projection matrix
+    // lives (4 registers), found by parsing the shader's constant table, or
+    // -1 if none was identified. Used to capture the camera view-projection
+    // for motion-vector generation.
+    int MvpRegister() const                         { return _mvpRegister; }
+    void SetMvpRegister(int reg)                    { _mvpRegister = reg; }
     // True only when the patched variant actually reads the jitter constant —
     // a plain disasm/asm round-trip (transform-skipped fallback) is patched
     // but NOT jittered, so the device must not upload to its const slot.
@@ -77,6 +83,7 @@ class __declspec(uuid("7B3F2A0C-1D4E-4B5F-8A6C-9E2F3B4D5E6F"))
     PatchState _state = PatchState::Untried;
     uint32_t _jitterConstSlot = 0;
     bool _jittered = false;
+    int _mvpRegister = -1;
 
     std::vector<DWORD> _origBytecode;
     uint64_t _hash = 0;

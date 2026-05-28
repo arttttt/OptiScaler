@@ -22,6 +22,44 @@ static void Mat4Mul(D3DMATRIX* out, const D3DMATRIX& a, const D3DMATRIX& b)
     *out = tmp;
 }
 
+// General 4x4 inverse (cofactor expansion, the classic MESA gluInvertMatrix).
+// Works on the flat 16-float layout, so it's layout-agnostic — feeding a
+// row-major D3DMATRIX gives the row-major inverse, correct for the v*M
+// convention used here and by the MV compute shader. Returns false if the
+// matrix is singular (degenerate camera VP -> caller skips MV this frame).
+static bool Mat4Inverse(D3DMATRIX* out, const D3DMATRIX& in)
+{
+    const float* m = &in.m[0][0];
+    float inv[16];
+
+    inv[0]  =  m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15] + m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10];
+    inv[4]  = -m[4]*m[10]*m[15] + m[4]*m[11]*m[14] + m[8]*m[6]*m[15] - m[8]*m[7]*m[14] - m[12]*m[6]*m[11] + m[12]*m[7]*m[10];
+    inv[8]  =  m[4]*m[9]*m[15] - m[4]*m[11]*m[13] - m[8]*m[5]*m[15] + m[8]*m[7]*m[13] + m[12]*m[5]*m[11] - m[12]*m[7]*m[9];
+    inv[12] = -m[4]*m[9]*m[14] + m[4]*m[10]*m[13] + m[8]*m[5]*m[14] - m[8]*m[6]*m[13] - m[12]*m[5]*m[10] + m[12]*m[6]*m[9];
+    inv[1]  = -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15] - m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10];
+    inv[5]  =  m[0]*m[10]*m[15] - m[0]*m[11]*m[14] - m[8]*m[2]*m[15] + m[8]*m[3]*m[14] + m[12]*m[2]*m[11] - m[12]*m[3]*m[10];
+    inv[9]  = -m[0]*m[9]*m[15] + m[0]*m[11]*m[13] + m[8]*m[1]*m[15] - m[8]*m[3]*m[13] - m[12]*m[1]*m[11] + m[12]*m[3]*m[9];
+    inv[13] =  m[0]*m[9]*m[14] - m[0]*m[10]*m[13] - m[8]*m[1]*m[14] + m[8]*m[2]*m[13] + m[12]*m[1]*m[10] - m[12]*m[2]*m[9];
+    inv[2]  =  m[1]*m[6]*m[15] - m[1]*m[7]*m[14] - m[5]*m[2]*m[15] + m[5]*m[3]*m[14] + m[13]*m[2]*m[7] - m[13]*m[3]*m[6];
+    inv[6]  = -m[0]*m[6]*m[15] + m[0]*m[7]*m[14] + m[4]*m[2]*m[15] - m[4]*m[3]*m[14] - m[12]*m[2]*m[7] + m[12]*m[3]*m[6];
+    inv[10] =  m[0]*m[5]*m[15] - m[0]*m[7]*m[13] - m[4]*m[1]*m[15] + m[4]*m[3]*m[13] + m[12]*m[1]*m[7] - m[12]*m[3]*m[5];
+    inv[14] = -m[0]*m[5]*m[14] + m[0]*m[6]*m[13] + m[4]*m[1]*m[14] - m[4]*m[2]*m[13] - m[12]*m[1]*m[6] + m[12]*m[2]*m[5];
+    inv[3]  = -m[1]*m[6]*m[11] + m[1]*m[7]*m[10] + m[5]*m[2]*m[11] - m[5]*m[3]*m[10] - m[9]*m[2]*m[7] + m[9]*m[3]*m[6];
+    inv[7]  =  m[0]*m[6]*m[11] - m[0]*m[7]*m[10] - m[4]*m[2]*m[11] + m[4]*m[3]*m[10] + m[8]*m[2]*m[7] - m[8]*m[3]*m[6];
+    inv[11] = -m[0]*m[5]*m[11] + m[0]*m[7]*m[9] + m[4]*m[1]*m[11] - m[4]*m[3]*m[9] - m[8]*m[1]*m[7] + m[8]*m[3]*m[5];
+    inv[15] =  m[0]*m[5]*m[10] - m[0]*m[6]*m[9] - m[4]*m[1]*m[10] + m[4]*m[2]*m[9] + m[8]*m[1]*m[6] - m[8]*m[2]*m[5];
+
+    float det = m[0]*inv[0] + m[1]*inv[4] + m[2]*inv[8] + m[3]*inv[12];
+    if (det > -1e-12f && det < 1e-12f)
+        return false;
+
+    det = 1.0f / det;
+    float* o = &out->m[0][0];
+    for (int i = 0; i < 16; ++i)
+        o[i] = inv[i] * det;
+    return true;
+}
+
 WrappedIDirect3DDevice9Ex::WrappedIDirect3DDevice9Ex(IDirect3DDevice9* real, IDirect3DDevice9Ex* realEx, HWND hwnd, D3DPRESENT_PARAMETERS* pPresentParams)
     : _real(real), _realEx(realEx), _hwnd(hwnd)
 {
@@ -328,12 +366,31 @@ void WrappedIDirect3DDevice9Ex::RegisterDepthSurfaceForStats(IDirect3DSurface9* 
 
 void WrappedIDirect3DDevice9Ex::AccumulateDrawStats(D3DPRIMITIVETYPE primType, UINT primCount, UINT verticesOverride)
 {
-    if (_currentDepthForStats == nullptr)
-        return;
-
     const int verts = verticesOverride > 0
                           ? static_cast<int>(verticesOverride)
                           : VerticesFromPrimitiveCount(primType, primCount);
+
+    // MV: capture the camera view-projection. The bound shader's
+    // view-projection register (from its constant table) read out of the
+    // constant shadow is this draw's VP; world geometry (Model=identity, and
+    // the highest-vertex draw of the frame) makes that the camera VP.
+    // Registers hold the matrix columns (fxc packs column-major), so
+    // transpose into a row-major D3DMATRIX matching the v*M convention.
+    if (_currentVsWrapper != nullptr)
+    {
+        const int reg = _currentVsWrapper->MvpRegister();
+        if (reg >= 0 && reg + 3 < 256 && verts > _frameCamVpMaxVerts)
+        {
+            for (int col = 0; col < 4; ++col)
+                for (int row = 0; row < 4; ++row)
+                    _frameCamVp.m[row][col] = _vsConstShadow[reg + col][row];
+            _frameCamVpMaxVerts = verts;
+            _frameCamVpValid = true;
+        }
+    }
+
+    if (_currentDepthForStats == nullptr)
+        return;
 
     std::lock_guard<std::mutex> lock(_depthStatsMutex);
     auto it = _depthStats.find(_currentDepthForStats);
@@ -1039,17 +1096,42 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
         _vsConstCallsThisFrame = 0;
         MaybeDumpVsConstUsage();
 
-        // Phase 4: rotate ViewProjection (prev <- cur, cur <- view*proj). The
-        // bridge consumes _prevViewProj / _currentViewProj when populating the
-        // MV compute cbuffer. _viewProjHasPrev becomes true on frame 2.
+        // Phase 4: rotate ViewProjection (prev <- cur). The bridge consumes
+        // _prevViewProj / _currentViewProj for the MV compute cbuffer.
+        // _currentViewProj is the camera VP captured from world-geometry draws
+        // (shader-era games); falls back to view*proj for fixed-function games
+        // that still use SetTransform.
         if (_viewProjHasPrev)
             _prevViewProj = _currentViewProj;
-        Mat4Mul(&_currentViewProj, _currentView, _currentProjection);
+        if (_frameCamVpValid)
+        {
+            _currentViewProj = _frameCamVp;
+            _camVpValid = true;
+            if (!_loggedCamVp)
+            {
+                _loggedCamVp = true;
+                LOG_INFO("MV: captured camera view-projection (from {}-vertex draw) — "
+                         "row0=[{:.3f},{:.3f},{:.3f},{:.3f}] row3=[{:.3f},{:.3f},{:.3f},{:.3f}]",
+                         _frameCamVpMaxVerts, _currentViewProj.m[0][0], _currentViewProj.m[0][1],
+                         _currentViewProj.m[0][2], _currentViewProj.m[0][3], _currentViewProj.m[3][0],
+                         _currentViewProj.m[3][1], _currentViewProj.m[3][2], _currentViewProj.m[3][3]);
+            }
+        }
+        else if (!_camVpValid)
+        {
+            // No camera VP ever captured — fixed-function fallback (zero on
+            // shader-era games). Once we *have* captured one, a frame without
+            // a world draw keeps the last VP rather than zeroing it.
+            Mat4Mul(&_currentViewProj, _currentView, _currentProjection);
+        }
         if (!_viewProjHasPrev)
         {
             _prevViewProj = _currentViewProj;
             _viewProjHasPrev = true;
         }
+        // Reset the per-frame capture for the next frame.
+        _frameCamVpValid = false;
+        _frameCamVpMaxVerts = 0;
 
         LogTopDepthStats();
         IdentifySceneDepth();
@@ -1084,7 +1166,23 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
                     // _jitterX/_jitterY are this frame's raw Halton pixel
                     // offsets (BeginScene) — the same the VS patch applied, so
                     // FSR2 can un-jitter. Needs Dx9TAA_VsJitterStrength=1.0.
-                    if (!_bridge->Render(backbuf, _depthCopyRTSurface, _jitterX, _jitterY))
+                    // Camera matrices for the MV compute: inverse of the
+                    // captured current camera VP + the previous frame's VP
+                    // (row-major, the MV shader's v*M convention).
+                    float invCur[16] = {};
+                    float prevVP[16] = {};
+                    bool mvValid = false;
+                    if (_camVpValid && _viewProjHasPrev)
+                    {
+                        D3DMATRIX inv;
+                        if (Mat4Inverse(&inv, _currentViewProj))
+                        {
+                            memcpy(invCur, &inv.m[0][0], sizeof(invCur));
+                            memcpy(prevVP, &_prevViewProj.m[0][0], sizeof(prevVP));
+                            mvValid = true;
+                        }
+                    }
+                    if (!_bridge->Render(backbuf, _depthCopyRTSurface, _jitterX, _jitterY, invCur, prevVP, mvValid))
                     {
                         LOG_WARN("Dx9wDx11: Render failed — disabling bridge until Reset");
                         _bridge.reset();
@@ -1796,6 +1894,10 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateVertexShader(CONST DW
         if (dwordLen > 0 && processEnabled)
         {
             const CachedVsResult* processed = ProcessVertexShader(pFunction, dwordLen, hash);
+            // MV: remember the view-projection register on the wrapper (set
+            // even when not patched — it's independent of jitter).
+            if (processed != nullptr)
+                wrapper->SetMvpRegister(processed->mvpRegister);
             if (processed != nullptr && processed->usable)
             {
                 IDirect3DVertexShader9* patched = nullptr;
@@ -1905,6 +2007,10 @@ const WrappedIDirect3DDevice9Ex::CachedVsResult* WrappedIDirect3DDevice9Ex::Proc
         LOG_WARN("Phase 7: disassemble failed hash=0x{:016X} — using original", hash);
         return &_vsProcessCache.emplace(hash, std::move(result)).first->second;
     }
+
+    // MV: note the view-projection register from the constant table (per
+    // bytecode, so cached). Used at draw time to capture the camera VP.
+    result.mvpRegister = DxbcVsPatcher::FindViewProjRegister(asmText);
 
     std::string finalAsm = asmText;
     bool jittered = false;
@@ -2041,6 +2147,18 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetVertexShaderConstantF(UI
     {
         _vsConstCallsThisFrame++;
         ProbeForProjectionMatrix(StartRegister, pConstantData, Vector4fCount);
+
+        // MV: shadow the VS float constants so we can read a shader's
+        // view-projection matrix at draw time (the game uploads it here).
+        for (UINT i = 0; i < Vector4fCount && (StartRegister + i) < 256; ++i)
+        {
+            const float* src = pConstantData + i * 4;
+            float* dst = _vsConstShadow[StartRegister + i];
+            dst[0] = src[0];
+            dst[1] = src[1];
+            dst[2] = src[2];
+            dst[3] = src[3];
+        }
 
         // Phase 7 Session 3: record exactly which constant registers the game
         // writes (our own jitter upload goes straight to _real, so it isn't

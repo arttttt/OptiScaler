@@ -228,6 +228,18 @@ private:
     D3DMATRIX _prevViewProj = {};
     bool _viewProjHasPrev = false;
 
+    // MV camera-VP capture. Shader-era games upload their matrices via
+    // SetVertexShaderConstantF, so we shadow all VS float constants and, at
+    // each draw, read the bound shader's view-projection register (found from
+    // its constant table). The camera VP is the matrix world geometry uses
+    // (Model=identity) — heuristically the highest-vertex draw of the frame.
+    float _vsConstShadow[256][4] = {};
+    D3DMATRIX _frameCamVp = {};       // best camera-VP candidate this frame
+    int _frameCamVpMaxVerts = 0;      // vertex count of the draw it came from
+    bool _frameCamVpValid = false;    // a candidate was captured this frame
+    bool _camVpValid = false;         // _currentViewProj holds a real camera VP
+    bool _loggedCamVp = false;
+
     // Phase 3: scene depth surface (largest one matching backbuffer dims).
     // AddRef'd while tracked, released on dtor / Reset / replacement.
     IDirect3DSurface9* _trackedDepthSurface = nullptr;
@@ -286,6 +298,7 @@ private:
         bool jittered = false;          // true if the transform injected jitter (vs. plain reassembly)
         std::vector<DWORD> bytecode;    // reassembled (round-trip) / patched (jitter)
         uint32_t jitterConstSlot = 0;   // which cN the patched shader reads jitter from
+        int mvpRegister = -1;           // constant register of the view-projection matrix, or -1
     };
     std::unordered_map<uint64_t, CachedVsResult> _vsProcessCache;
     int _vsRoundtripLogged = 0;         // cap process-verify log lines

@@ -86,4 +86,11 @@ class DxbcVsPatcher
     // by D3DX9Shader::Assemble.
     static JitterTransformResult BuildJitteredAsm(const std::string& disasm, const RegisterUsage& usage,
                                                   uint32_t jitterReg);
+
+    // Phase 4/MV: scan the disassembly's constant-table comment for the
+    // float constant register (4 registers = a 4x4 matrix) whose name looks
+    // like a (model-)view-projection matrix — cModelViewProj, matWorldViewProj,
+    // g_mWVP, etc. Returns the base register index, or -1 if none. Used to
+    // capture the camera view-projection for motion vectors.
+    static int FindViewProjRegister(const std::string& disasm);
 };

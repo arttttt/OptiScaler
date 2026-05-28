@@ -306,6 +306,64 @@ namespace
     }
 }
 
+int DxbcVsPatcher::FindViewProjRegister(const std::string& disasm)
+{
+    // The D3DXDisassembleShader header lists constants under "Registers:" as
+    //   //   <name>   c<reg>   <size>
+    // Pick a 4-register (4x4 matrix) float constant whose name looks like a
+    // view-projection. Prefer a plain view-projection over a world/model one
+    // if both appear, but for the camera VP we want the matrix world geometry
+    // multiplies by — which on Model=identity draws is the same thing.
+    std::istringstream stream(disasm);
+    std::string line;
+    bool inRegisters = false;
+
+    while (std::getline(stream, line))
+    {
+        if (line.find("Registers:") != std::string::npos)
+        {
+            inRegisters = true;
+            continue;
+        }
+        if (!inRegisters)
+            continue;
+
+        const size_t comment = line.find("//");
+        if (comment == std::string::npos)
+            continue;
+
+        // Tokenise the comment body: [name, cReg, ..., size].
+        std::istringstream ls(line.substr(comment + 2));
+        std::vector<std::string> toks;
+        std::string t;
+        while (ls >> t)
+            toks.push_back(t);
+        if (toks.size() < 3)
+            continue;
+
+        const std::string& name = toks.front();
+        const std::string& regTok = toks[1];
+        const int size = std::atoi(toks.back().c_str());
+
+        if (size < 4 || regTok.size() < 2 || regTok[0] != 'c')
+            continue;
+
+        std::string low = name;
+        for (auto& ch : low)
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        const bool looksVP = low.find("viewproj") != std::string::npos || low.find("worldviewproj") != std::string::npos ||
+                             low.find("wvp") != std::string::npos || low.find("mvp") != std::string::npos;
+        if (!looksVP)
+            continue;
+
+        const int reg = std::atoi(regTok.c_str() + 1);
+        if (reg >= 0)
+            return reg;
+    }
+
+    return -1;
+}
+
 DxbcVsPatcher::JitterTransformResult DxbcVsPatcher::BuildJitteredAsm(
     const std::string& disasm, const RegisterUsage& usage, uint32_t jitterReg)
 {

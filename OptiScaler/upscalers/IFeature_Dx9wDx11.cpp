@@ -6,6 +6,7 @@
 
 #include <fsr2/ffx_fsr2.h>
 #include <fsr2/dx11/ffx_fsr2_dx11.h>
+#include <shaders/motion_vectors/MV_Dx11.h>
 
 #include <vector>
 
@@ -120,6 +121,15 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
     {
         if (!CreateFsr2Resources())
             LOG_WARN("Dx9wDx11: FSR2 working resources unavailable — round-trip fallback");
+
+        // MV: Phase 4 motion-vector compute. Non-fatal — without it FSR2 uses
+        // the zero MV (static-camera-correct).
+        _mv = std::make_unique<MotionVectors_Dx11>("Dx9wDx11_MV", _dx11Device);
+        if (!_mv->CreateBufferResource(_dx11Device, _width, _height))
+        {
+            LOG_WARN("Dx9wDx11: MV compute resource unavailable — FSR2 uses zero MV");
+            _mv.reset();
+        }
     }
 
     _init = true;
@@ -263,7 +273,7 @@ bool IFeature_Dx9wDx11::WaitGpuDx9()
 }
 
 bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurface9* gameDepthR32f, float jitterX,
-                               float jitterY)
+                               float jitterY, const float* invViewProjCur, const float* viewProjPrev, bool mvValid)
 {
     if (!_init || gameBackbuffer == nullptr)
         return false;
@@ -304,8 +314,30 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurfa
     // the game never loses its image.
     IDirect3DSurface9* outSurf = nullptr;
 
+    // MV compute: shared depth + camera matrices -> R16G16F motion vectors.
+    // Only when a camera VP is available; otherwise FSR2 gets the zero MV.
+    ID3D11Texture2D* mvTex = nullptr;
+    if (mvValid && _mv != nullptr && _sharedDepthTex11 != nullptr && invViewProjCur != nullptr &&
+        viewProjPrev != nullptr)
+    {
+        MVConstants mvc = {};
+        memcpy(mvc.InvViewProj_Current, invViewProjCur, sizeof(mvc.InvViewProj_Current));
+        memcpy(mvc.ViewProj_Previous, viewProjPrev, sizeof(mvc.ViewProj_Previous));
+        mvc.ScreenWidth = static_cast<float>(_width);
+        mvc.ScreenHeight = static_cast<float>(_height);
+        if (_mv->Dispatch(_dx11Device, _dx11Context, _sharedDepthTex11, mvc))
+        {
+            mvTex = _mv->Buffer();
+            if (!_loggedMv)
+            {
+                _loggedMv = true;
+                LOG_INFO("Dx9wDx11: MV compute live — real motion vectors feeding FSR2");
+            }
+        }
+    }
+
     const bool fsr2Done =
-        Config::Instance()->Dx9TAA_BridgeFsr2.value_or_default() && DispatchFsr2(jitterX, jitterY);
+        Config::Instance()->Dx9TAA_BridgeFsr2.value_or_default() && DispatchFsr2(jitterX, jitterY, mvTex);
 
     if (fsr2Done)
     {
@@ -475,7 +507,7 @@ bool IFeature_Dx9wDx11::CreateFsr2Resources()
 // DX11-only UAV, which the caller copies to the shared BGRA texture. Returns
 // false (caller falls back to the round-trip) if FSR2 isn't ready, depth is
 // missing, or the dispatch errors.
-bool IFeature_Dx9wDx11::DispatchFsr2(float jitterX, float jitterY)
+bool IFeature_Dx9wDx11::DispatchFsr2(float jitterX, float jitterY, ID3D11Texture2D* mvTex)
 {
     if (_fsr2 == nullptr || !_fsr2->created || !_fsr2ResourcesReady)
         return false;
@@ -500,7 +532,8 @@ bool IFeature_Dx9wDx11::DispatchFsr2(float jitterX, float jitterY)
     d.commandList = _dx11Context;
     d.color = ffxGetResourceDX11(&_fsr2->context, _sharedInTex11, (wchar_t*) L"FSR2_Color");
     d.depth = ffxGetResourceDX11(&_fsr2->context, _sharedDepthTex11, (wchar_t*) L"FSR2_Depth");
-    d.motionVectors = ffxGetResourceDX11(&_fsr2->context, _fsr2Mv, (wchar_t*) L"FSR2_MV");
+    // Real MV when the compute produced one this frame, else the zero texture.
+    d.motionVectors = ffxGetResourceDX11(&_fsr2->context, mvTex != nullptr ? mvTex : _fsr2Mv, (wchar_t*) L"FSR2_MV");
     d.output =
         ffxGetResourceDX11(&_fsr2->context, _fsr2Out, (wchar_t*) L"FSR2_Out", FFX_RESOURCE_STATE_UNORDERED_ACCESS);
 
@@ -566,6 +599,9 @@ void IFeature_Dx9wDx11::ReleaseAll()
             ffxFsr2ContextDestroy(&_fsr2->context);
         _fsr2.reset();
     }
+
+    // MV compute owns DX11 resources on _dx11Device — release before it.
+    _mv.reset();
 
     _sharpen.reset();
 

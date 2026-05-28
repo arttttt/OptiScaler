@@ -5,6 +5,7 @@
 #include <memory>
 
 class Sharpen_Dx11;
+class MotionVectors_Dx11;
 struct Dx9wDx11Fsr2State;
 
 // DX9 → DX11 bridge for the DLAA upscaler path. 32-bit only: DX12 has no
@@ -42,8 +43,12 @@ class IFeature_Dx9wDx11
     // depth was identified this frame — it gets bridged to DX11 as the FSR2
     // depth input. jitterX/jitterY are this frame's Halton sub-pixel offset
     // (pixels) — the exact value the vertex-shader patch applied — handed to
-    // FSR2 so it can un-jitter when accumulating.
-    bool Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurface9* gameDepthR32f, float jitterX, float jitterY);
+    // FSR2 so it can un-jitter when accumulating. invViewProjCur/viewProjPrev
+    // are 16-float row-major camera matrices for the MV compute; mvValid is
+    // false until a camera view-projection has been captured for two frames,
+    // in which case FSR2 gets a zero MV (correct only for a static camera).
+    bool Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurface9* gameDepthR32f, float jitterX, float jitterY,
+                const float* invViewProjCur, const float* viewProjPrev, bool mvValid);
 
     bool IsInit() const { return _init; }
     UINT Width() const { return _width; }
@@ -109,6 +114,13 @@ class IFeature_Dx9wDx11
     int64_t _lastQpc = 0;                  // for frameTimeDelta
     bool _loggedFsr2Dispatch = false;
 
+    // MV: Phase 4 motion-vector compute on the bridge's DX11 device. Each
+    // frame the camera VP is valid it turns the shared depth + camera
+    // matrices into the R16G16F MV texture FSR2 reads instead of the zero
+    // _fsr2Mv. Pimpl'd (forward-declared) so MV_Dx11.h doesn't leak here.
+    std::unique_ptr<MotionVectors_Dx11> _mv;
+    bool _loggedMv = false;
+
     // DX9 sync: event query gets issued after StretchRect-in and we poll
     // GetData(D3DGETDATA_FLUSH) before DX11 reads. DX11 flush happens after
     // CopyResource and before DX9 reads back.
@@ -140,7 +152,7 @@ class IFeature_Dx9wDx11
     bool CreateSharedDepth();
     bool InitFsr2();
     bool CreateFsr2Resources();
-    bool DispatchFsr2(float jitterX, float jitterY);
+    bool DispatchFsr2(float jitterX, float jitterY, ID3D11Texture2D* mvTex);
     bool WaitGpuDx9();
     void ReleaseAll();
 };

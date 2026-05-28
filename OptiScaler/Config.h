@@ -280,8 +280,11 @@ class Config
     // (NOT transformed) bytecode. Validates the patch pipeline end to end
     // before any jitter transform is added — with this on the game should
     // render identically, proving disasm/asm/cache/wrapper-bind all work.
-    // Default off; needs d3dx9_43.dll (DirectX End-User Runtime).
-    CustomOptional<bool> Dx9TAA_VsRoundtripTest { false };
+    // Needs d3dx9_43.dll (DirectX End-User Runtime); if absent, falls back
+    // to the original shader. Default ON during Phase 7 bring-up so a plain
+    // rebuild runs the test; flip off (or retire) once Session 4's real
+    // jitter transform supersedes it.
+    CustomOptional<bool> Dx9TAA_VsRoundtripTest { true };
 
     // CAS
     CustomOptional<bool> RcasEnabled { false };

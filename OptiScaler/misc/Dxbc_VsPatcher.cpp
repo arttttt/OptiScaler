@@ -331,10 +331,15 @@ DxbcVsPatcher::JitterTransformResult DxbcVsPatcher::BuildJitteredAsm(
         return r;
     }
 
-    // Position output: vs_2_0 writes the named oPos register; vs_3_0 writes
-    // the generic output register declared with dcl_position. Find that
-    // register's name from the disassembly (default oPos for vs_2_0).
-    std::string posReg = "oPos";
+    // Position OUTPUT register. vs_2_0 always writes the named, undeclared
+    // oPos register. vs_3_0 writes a generic o-register declared with
+    // dcl_position — but note vs_3_0 ALSO declares the INPUT position with
+    // `dcl_position v0`, so we must pick the declaration whose register is an
+    // output (starts with 'o'), not the input (v). Getting this wrong
+    // redirects the input read and writes a read-only input register, which
+    // the runtime rejects (the bug that made Session 3's first build fail).
+    std::string posReg;
+    if (usage.major >= 3)
     {
         size_t p = disasm.find("dcl_position");
         while (p != std::string::npos)
@@ -346,15 +351,27 @@ DxbcVsPatcher::JitterTransformResult DxbcVsPatcher::BuildJitteredAsm(
                 size_t s = after;
                 while (s < disasm.size() && (disasm[s] == ' ' || disasm[s] == '\t'))
                     ++s;
-                size_t e = s;
-                while (e < disasm.size() && IsAsmTokenChar(disasm[e]))
-                    ++e;
-                if (e > s)
+                // Output registers begin with 'o'; inputs begin with 'v'.
+                if (s < disasm.size() && disasm[s] == 'o')
+                {
+                    size_t e = s;
+                    while (e < disasm.size() && IsAsmTokenChar(disasm[e]))
+                        ++e;
                     posReg = disasm.substr(s, e - s);
-                break;
+                    break;
+                }
             }
             p = disasm.find("dcl_position", p + 1);
         }
+        if (posReg.empty())
+        {
+            r.failReason = "vs_3_0 position output register not found";
+            return r;
+        }
+    }
+    else
+    {
+        posReg = "oPos";
     }
 
     const std::string tempName = "r" + std::to_string(freeTemp);

@@ -298,17 +298,25 @@ private:
     // unavailable.
     const CachedVsResult* ProcessVertexShader(const DWORD* bytecode, size_t dwordLen, uint64_t hash);
 
+    // Phase 7 Session 3: once the game has uploaded its constants for a few
+    // frames, log which high constant registers it uses so a free jitter
+    // register can be chosen. Called from Present/PresentEx, logs once.
+    void MaybeDumpVsConstUsage();
+
     // Phase 7 Session 3: per-frame jitter offset in clip/NDC units (already
     // scaled by Dx9TAA_VsJitterStrength and the Y-flip), recomputed each
     // BeginScene and uploaded to the jitter constant register before each
     // patched-shader draw.
     float _jitterClipX = 0.0f;
     float _jitterClipY = 0.0f;
-    // Highest constant register the game itself writes via
-    // SetVertexShaderConstantF — tracked so we can warn if it ever reaches
-    // our jitter register (a collision that would corrupt the jitter).
-    int _gameMaxVsConstReg = -1;
+    // Which vertex-shader constant registers the game itself writes via
+    // SetVertexShaderConstantF (our own jitter upload goes straight to _real,
+    // so it isn't recorded here). Used to (a) warn precisely if the game
+    // writes our jitter register, and (b) dump the high-register usage once so
+    // a free register can be chosen. vs_2_0/3_0 have 256 float constants.
+    bool _gameVsConstWritten[256] = {};
     bool _loggedJitterRegCollision = false;
+    bool _loggedConstUsageDump = false;
     // Set once any shader is successfully jittered, so the per-frame upload in
     // BeginScene only touches the jitter register when something reads it.
     bool _anyJitteredShader = false;

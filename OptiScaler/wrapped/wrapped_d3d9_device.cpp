@@ -1037,6 +1037,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
                      _vsConstCallsThisFrame, _projectionMatchCount);
         }
         _vsConstCallsThisFrame = 0;
+        MaybeDumpVsConstUsage();
 
         // Phase 4: rotate ViewProjection (prev <- cur, cur <- view*proj). The
         // bridge consumes _prevViewProj / _currentViewProj when populating the
@@ -1805,6 +1806,12 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateVertexShader(CONST DW
                     LOG_WARN("Phase 7: CreateVertexShader on processed bytecode failed "
                              "(hash=0x{:016X}, hr=0x{:08X}) — using original", hash, static_cast<uint32_t>(rhr));
                     wrapper->MarkPatchFailed();
+                    // The processed bytecode is bad; mark the cache entry
+                    // unusable so duplicate shaders with this hash don't retry
+                    // the failing CreateVertexShader (avoids per-wrapper spam).
+                    auto cached = _vsProcessCache.find(hash);
+                    if (cached != _vsProcessCache.end())
+                        cached->second.usable = false;
                 }
             }
         }
@@ -1827,6 +1834,43 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateVertexShader(CONST DW
 // the cached entry (usable=true when the produced bytecode is a valid
 // stand-in for the original). On any pipeline failure it caches an unusable
 // result so the wrapper falls back to the original shader.
+void WrappedIDirect3DDevice9Ex::MaybeDumpVsConstUsage()
+{
+    if (_loggedConstUsageDump || !Config::Instance()->Dx9TAA_VsJitter.value_or_default())
+        return;
+    // Give the game a few frames to upload its constant set before sampling.
+    if (_frameIndex < 30)
+        return;
+
+    _loggedConstUsageDump = true;
+
+    int highestUsed = -1;
+    for (int i = 255; i >= 0; --i)
+    {
+        if (_gameVsConstWritten[i])
+        {
+            highestUsed = i;
+            break;
+        }
+    }
+
+    // Free registers scanning down from the top — candidates for the jitter
+    // register on this game.
+    std::string freeList;
+    int found = 0;
+    for (int i = 255; i >= 0 && found < 8; --i)
+    {
+        if (!_gameVsConstWritten[i])
+        {
+            freeList += "c" + std::to_string(i) + " ";
+            ++found;
+        }
+    }
+
+    LOG_INFO("Phase 7 Session 3: game VS const usage — highest used c{}; free near top: {}", highestUsed,
+             freeList.empty() ? "(none)" : freeList);
+}
+
 const WrappedIDirect3DDevice9Ex::CachedVsResult* WrappedIDirect3DDevice9Ex::ProcessVertexShader(
     const DWORD* bytecode, size_t dwordLen, uint64_t hash)
 {
@@ -1995,23 +2039,24 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetVertexShaderConstantF(UI
         _vsConstCallsThisFrame++;
         ProbeForProjectionMatrix(StartRegister, pConstantData, Vector4fCount);
 
-        // Phase 7 Session 3: track the highest constant register the game
-        // itself writes (our own jitter upload goes straight to _real, so it
-        // isn't counted here). If the game ever reaches the jitter register,
-        // our injected reads collide with the game's data — warn once so we
-        // know to pick a different register for that title.
+        // Phase 7 Session 3: record exactly which constant registers the game
+        // writes (our own jitter upload goes straight to _real, so it isn't
+        // recorded). Used to warn precisely if the game writes our jitter
+        // register, and to dump the high-register usage so a free one can be
+        // picked.
         if (Config::Instance()->Dx9TAA_VsJitter.value_or_default() && Vector4fCount > 0)
         {
-            const int highest = static_cast<int>(StartRegister + Vector4fCount - 1);
-            if (highest > _gameMaxVsConstReg)
-                _gameMaxVsConstReg = highest;
+            const UINT first = StartRegister;
+            const UINT last = StartRegister + Vector4fCount; // exclusive
+            for (UINT i = first; i < last && i < 256; ++i)
+                _gameVsConstWritten[i] = true;
 
             const int jitterReg = Config::Instance()->Dx9TAA_VsJitterRegister.value_or_default();
-            if (!_loggedJitterRegCollision && highest >= jitterReg)
+            if (!_loggedJitterRegCollision && jitterReg >= 0 && jitterReg < 256 && _gameVsConstWritten[jitterReg])
             {
                 _loggedJitterRegCollision = true;
-                LOG_WARN("Phase 7: game writes VS const c{} >= jitter register c{} — COLLISION, pick a higher "
-                         "Dx9TAA_VsJitterRegister for this game", highest, jitterReg);
+                LOG_WARN("Phase 7: game writes jitter register c{} — COLLISION, pick a different "
+                         "Dx9TAA_VsJitterRegister for this game", jitterReg);
             }
         }
     }
@@ -2173,6 +2218,7 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::PresentEx(CONST RECT* pSour
                      _vsConstCallsThisFrame, _projectionMatchCount);
         }
         _vsConstCallsThisFrame = 0;
+        MaybeDumpVsConstUsage();
 
         LogTopDepthStats();
         IdentifySceneDepth();

@@ -1081,7 +1081,10 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
 
                 if (_bridge && _bridge->IsInit())
                 {
-                    if (!_bridge->Render(backbuf, _depthCopyRTSurface))
+                    // _jitterX/_jitterY are this frame's raw Halton pixel
+                    // offsets (BeginScene) — the same the VS patch applied, so
+                    // FSR2 can un-jitter. Needs Dx9TAA_VsJitterStrength=1.0.
+                    if (!_bridge->Render(backbuf, _depthCopyRTSurface, _jitterX, _jitterY))
                     {
                         LOG_WARN("Dx9wDx11: Render failed — disabling bridge until Reset");
                         _bridge.reset();

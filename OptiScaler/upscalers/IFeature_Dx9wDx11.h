@@ -40,8 +40,10 @@ class IFeature_Dx9wDx11
     // calls the real Present without intervention. gameDepthR32f is the
     // Phase 3 depth-copy output (R32F render target) or null when no scene
     // depth was identified this frame — it gets bridged to DX11 as the FSR2
-    // depth input.
-    bool Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurface9* gameDepthR32f);
+    // depth input. jitterX/jitterY are this frame's Halton sub-pixel offset
+    // (pixels) — the exact value the vertex-shader patch applied — handed to
+    // FSR2 so it can un-jitter when accumulating.
+    bool Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurface9* gameDepthR32f, float jitterX, float jitterY);
 
     bool IsInit() const { return _init; }
     UINT Width() const { return _width; }
@@ -89,6 +91,24 @@ class IFeature_Dx9wDx11
     ID3D11Texture2D* _sharedDepthTex11 = nullptr;
     bool _loggedDepthShare = false;
 
+    // 5b dispatch: DX11-only FSR2 working textures. Color/depth inputs are
+    // read straight from the shared textures (they carry SRV bind). The
+    // motion-vector input is a DX11-only zero texture (correct for a static
+    // camera; real MV needs camera-VP capture). The output MUST be a DX11-only
+    // UAV — shared D3D9 textures can't be UAVs — in a UAV-legal format
+    // (B8G8R8A8, not the backbuffer's B8G8R8X8). It's CopyResource'd into a
+    // shared BGRA texture, then StretchRect (format-converting) to the
+    // backbuffer.
+    ID3D11Texture2D* _fsr2Mv = nullptr;    // R16G16F zero
+    ID3D11Texture2D* _fsr2Out = nullptr;   // B8G8R8A8 UAV
+    IDirect3DTexture9* _sharedFsr2OutTex9 = nullptr;
+    IDirect3DSurface9* _sharedFsr2OutSurf9 = nullptr;
+    HANDLE _sharedFsr2OutHandle = nullptr;
+    ID3D11Texture2D* _sharedFsr2OutTex11 = nullptr;
+    bool _fsr2ResourcesReady = false;
+    int64_t _lastQpc = 0;                  // for frameTimeDelta
+    bool _loggedFsr2Dispatch = false;
+
     // DX9 sync: event query gets issued after StretchRect-in and we poll
     // GetData(D3DGETDATA_FLUSH) before DX11 reads. DX11 flush happens after
     // CopyResource and before DX9 reads back.
@@ -119,6 +139,8 @@ class IFeature_Dx9wDx11
     bool CreateSharedColor();
     bool CreateSharedDepth();
     bool InitFsr2();
+    bool CreateFsr2Resources();
+    bool DispatchFsr2(float jitterX, float jitterY);
     bool WaitGpuDx9();
     void ReleaseAll();
 };

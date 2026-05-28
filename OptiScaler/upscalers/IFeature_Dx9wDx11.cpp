@@ -111,8 +111,16 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
 
     // Phase 5b: stand up the FSR2 context on the bridge's DX11 device. Raw
     // ffx_fsr2 API (see header). Non-fatal — if FSR2 can't init the bridge
-    // still does its round-trip; the per-frame dispatch lands next.
+    // still does its round-trip.
     InitFsr2();
+
+    // 5b dispatch: allocate FSR2's working textures (MV/output/shared-out).
+    // Non-fatal — without them the bridge falls back to the round-trip.
+    if (_fsr2 != nullptr && _fsr2->created && Config::Instance()->Dx9TAA_BridgeFsr2.value_or_default())
+    {
+        if (!CreateFsr2Resources())
+            LOG_WARN("Dx9wDx11: FSR2 working resources unavailable — round-trip fallback");
+    }
 
     _init = true;
     LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X}, rtv={})", _width, _height,
@@ -254,7 +262,8 @@ bool IFeature_Dx9wDx11::WaitGpuDx9()
     return false;
 }
 
-bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurface9* gameDepthR32f)
+bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurface9* gameDepthR32f, float jitterX,
+                               float jitterY)
 {
     if (!_init || gameBackbuffer == nullptr)
         return false;
@@ -288,25 +297,38 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurfa
     if (!WaitGpuDx9())
         return false;
 
-    // 3. DX11 work. In debug mode (Dx9TAA_BridgeDebug=true), clear the
-    // shared output to bright red — impossible to miss visually. Otherwise,
-    // round-trip via CopyResource so the bridge proves alive without
-    // perturbing the image. Both end with _sharedOutTex11 ready for the
-    // back-StretchRect.
-    if (Config::Instance()->Dx9TAA_BridgeDebug.value_or_default() && _sharedOutRtv != nullptr)
+    // 3. DX11 work. Preferred path: run the FSR2 resolve (the visible DLAA
+    // output). It reads the shared color/depth, writes its UAV, and copies
+    // the result into _sharedFsr2OutSurf9. On any failure (not ready, no
+    // depth, dispatch error) fall back to the clear-red/copy round-trip so
+    // the game never loses its image.
+    IDirect3DSurface9* outSurf = nullptr;
+
+    const bool fsr2Done =
+        Config::Instance()->Dx9TAA_BridgeFsr2.value_or_default() && DispatchFsr2(jitterX, jitterY);
+
+    if (fsr2Done)
     {
-        const float red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
-        _dx11Context->ClearRenderTargetView(_sharedOutRtv, red);
+        outSurf = _sharedFsr2OutSurf9; // DispatchFsr2 already Flushed
     }
     else
     {
-        _dx11Context->CopyResource(_sharedOutTex11, _sharedInTex11);
+        if (Config::Instance()->Dx9TAA_BridgeDebug.value_or_default() && _sharedOutRtv != nullptr)
+        {
+            const float red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
+            _dx11Context->ClearRenderTargetView(_sharedOutRtv, red);
+        }
+        else
+        {
+            _dx11Context->CopyResource(_sharedOutTex11, _sharedInTex11);
+        }
+        _dx11Context->Flush();
+        outSurf = _sharedOutSurf9;
     }
-    _dx11Context->Flush();
 
-    // 4. DX9: shared out -> backbuffer. After this the screen content matches
-    // what the game drew, having taken a detour through DX11 memory.
-    hr = _gameDevice->StretchRect(_sharedOutSurf9, nullptr, gameBackbuffer, nullptr, D3DTEXF_POINT);
+    // 4. DX9: shared out -> backbuffer. StretchRect handles the BGRA->BGRX
+    // format conversion on the FSR2 path.
+    hr = _gameDevice->StretchRect(outSurf, nullptr, gameBackbuffer, nullptr, D3DTEXF_POINT);
     if (FAILED(hr))
     {
         LOG_ERROR("Dx9wDx11: StretchRect(out -> backbuf) failed hr=0x{:08X}", static_cast<uint32_t>(hr));
@@ -371,6 +393,161 @@ bool IFeature_Dx9wDx11::InitFsr2()
     return true;
 }
 
+// 5b dispatch: the DX11-only working textures FSR2 needs that the shared
+// textures can't be (UAV output) or that the game doesn't provide (MV).
+bool IFeature_Dx9wDx11::CreateFsr2Resources()
+{
+    // Motion vectors: R16G16F, zero (static-camera placeholder; real MV needs
+    // camera view-projection capture). Created with zeroed initial data so it
+    // never needs writing — FSR2 only reads it.
+    {
+        std::vector<uint8_t> zero(static_cast<size_t>(_width) * _height * 4u, 0u); // R16G16F = 4 bytes/texel
+        D3D11_TEXTURE2D_DESC td = {};
+        td.Width = _width;
+        td.Height = _height;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R16G16_FLOAT;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA srd = {};
+        srd.pSysMem = zero.data();
+        srd.SysMemPitch = _width * 4u;
+        HRESULT hr = _dx11Device->CreateTexture2D(&td, &srd, &_fsr2Mv);
+        if (FAILED(hr) || _fsr2Mv == nullptr)
+        {
+            LOG_WARN("Dx9wDx11: FSR2 MV texture create failed hr=0x{:08X}", static_cast<uint32_t>(hr));
+            return false;
+        }
+    }
+
+    // Output: DX11-only UAV in a UAV-legal format. The backbuffer is usually
+    // B8G8R8X8 which is NOT typed-UAV-capable, so use B8G8R8A8.
+    {
+        D3D11_TEXTURE2D_DESC td = {};
+        td.Width = _width;
+        td.Height = _height;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
+        HRESULT hr = _dx11Device->CreateTexture2D(&td, nullptr, &_fsr2Out);
+        if (FAILED(hr) || _fsr2Out == nullptr)
+        {
+            LOG_WARN("Dx9wDx11: FSR2 output UAV texture create failed hr=0x{:08X}", static_cast<uint32_t>(hr));
+            return false;
+        }
+    }
+
+    // Shared BGRA output: FSR2's UAV result is CopyResource'd here (same
+    // B8G8R8A8 format), then StretchRect'd (BGRA -> backbuffer BGRX) to DX9.
+    {
+        HANDLE shared = nullptr;
+        HRESULT hr = _gameDeviceEx->CreateTexture(_width, _height, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8,
+                                                  D3DPOOL_DEFAULT, &_sharedFsr2OutTex9, &shared);
+        if (FAILED(hr) || _sharedFsr2OutTex9 == nullptr || shared == nullptr)
+        {
+            LOG_WARN("Dx9wDx11: FSR2 shared BGRA output create failed hr=0x{:08X}", static_cast<uint32_t>(hr));
+            return false;
+        }
+        hr = _sharedFsr2OutTex9->GetSurfaceLevel(0, &_sharedFsr2OutSurf9);
+        if (FAILED(hr) || _sharedFsr2OutSurf9 == nullptr)
+            return false;
+        _sharedFsr2OutHandle = shared;
+        hr = _dx11Device->OpenSharedResource(shared, IID_PPV_ARGS(&_sharedFsr2OutTex11));
+        if (FAILED(hr) || _sharedFsr2OutTex11 == nullptr)
+        {
+            LOG_WARN("Dx9wDx11: FSR2 shared output OpenSharedResource failed hr=0x{:08X}", static_cast<uint32_t>(hr));
+            return false;
+        }
+    }
+
+    _fsr2ResourcesReady = true;
+    LOG_INFO("Dx9wDx11: FSR2 working resources ready (MV zero, UAV out B8G8R8A8, shared A8R8G8B8)");
+    return true;
+}
+
+// 5b dispatch: run one FSR2 frame. Inputs (color/depth) are read straight
+// from the shared textures; MV is the zero texture; output goes to the
+// DX11-only UAV, which the caller copies to the shared BGRA texture. Returns
+// false (caller falls back to the round-trip) if FSR2 isn't ready, depth is
+// missing, or the dispatch errors.
+bool IFeature_Dx9wDx11::DispatchFsr2(float jitterX, float jitterY)
+{
+    if (_fsr2 == nullptr || !_fsr2->created || !_fsr2ResourcesReady)
+        return false;
+    if (_sharedDepthTex11 == nullptr) // FSR2 needs depth
+        return false;
+
+    // frameTimeDelta in ms via QPC.
+    float frameMs = 16.6f;
+    LARGE_INTEGER freq {}, now {};
+    if (QueryPerformanceFrequency(&freq) && QueryPerformanceCounter(&now) && freq.QuadPart != 0)
+    {
+        if (_lastQpc != 0)
+            frameMs = static_cast<float>((now.QuadPart - _lastQpc) * 1000.0 / static_cast<double>(freq.QuadPart));
+        _lastQpc = now.QuadPart;
+    }
+    if (frameMs < 1.0f)
+        frameMs = 1.0f;
+    if (frameMs > 200.0f)
+        frameMs = 200.0f;
+
+    FfxFsr2DispatchDescription d = {};
+    d.commandList = _dx11Context;
+    d.color = ffxGetResourceDX11(&_fsr2->context, _sharedInTex11, (wchar_t*) L"FSR2_Color");
+    d.depth = ffxGetResourceDX11(&_fsr2->context, _sharedDepthTex11, (wchar_t*) L"FSR2_Depth");
+    d.motionVectors = ffxGetResourceDX11(&_fsr2->context, _fsr2Mv, (wchar_t*) L"FSR2_MV");
+    d.output =
+        ffxGetResourceDX11(&_fsr2->context, _fsr2Out, (wchar_t*) L"FSR2_Out", FFX_RESOURCE_STATE_UNORDERED_ACCESS);
+
+    // Jitter the shader applied, in pixels (FSR2's convention matches the
+    // Halton offset Phase 7 uses). Requires Dx9TAA_VsJitterStrength = 1.0.
+    d.jitterOffset.x = jitterX;
+    d.jitterOffset.y = jitterY;
+    // Zero MV -> scale is irrelevant; set the usual UV-delta-to-pixels factor.
+    d.motionVectorScale.x = static_cast<float>(_width);
+    d.motionVectorScale.y = static_cast<float>(_height);
+    d.renderSize.width = _width;
+    d.renderSize.height = _height;
+    d.enableSharpening = false;
+    d.sharpness = 0.0f;
+    d.frameTimeDelta = frameMs;
+    d.preExposure = 1.0f;
+    d.reset = false;
+    d.cameraNear = 0.1f;
+    d.cameraFar = 10000.0f;
+    d.cameraFovAngleVertical = 1.0471975512f; // 60 degrees; refined when camera capture lands
+    d.viewSpaceToMetersFactor = 0.0f;
+
+    FfxErrorCode err = ffxFsr2ContextDispatch(&_fsr2->context, &d);
+    if (err != FFX_OK)
+    {
+        if (!_loggedFsr2Dispatch)
+        {
+            _loggedFsr2Dispatch = true;
+            LOG_WARN("Dx9wDx11: ffxFsr2ContextDispatch failed ({}) — falling back to round-trip",
+                     static_cast<int>(err));
+        }
+        return false;
+    }
+
+    // FSR2 wrote _fsr2Out (UAV); copy into the shared BGRA texture so DX9 can
+    // StretchRect it. Flush so the DX9 read sees finished DX11 work.
+    _dx11Context->CopyResource(_sharedFsr2OutTex11, _fsr2Out);
+    _dx11Context->Flush();
+
+    if (!_loggedFsr2Dispatch)
+    {
+        _loggedFsr2Dispatch = true;
+        LOG_INFO("Dx9wDx11: FSR2 dispatch live — DLAA resolve running");
+    }
+    return true;
+}
+
 void IFeature_Dx9wDx11::ReleaseAll()
 {
     auto safeRelease = [](auto*& p) {
@@ -403,11 +580,18 @@ void IFeature_Dx9wDx11::ReleaseAll()
     safeRelease(_sharedDepthSurf9);
     safeRelease(_sharedDepthTex9);
     safeRelease(_sharedDepthTex11);
+    safeRelease(_fsr2Mv);
+    safeRelease(_fsr2Out);
+    safeRelease(_sharedFsr2OutSurf9);
+    safeRelease(_sharedFsr2OutTex9);
+    safeRelease(_sharedFsr2OutTex11);
     safeRelease(_dx11Context);
     safeRelease(_dx11Device);
 
     _sharedInHandle = nullptr;
     _sharedOutHandle = nullptr;
     _sharedDepthHandle = nullptr;
+    _sharedFsr2OutHandle = nullptr;
+    _fsr2ResourcesReady = false;
     _init = false;
 }

@@ -275,6 +275,15 @@ class Config
     // to true any time you need to re-confirm the round-trip visually.
     CustomOptional<bool> Dx9TAA_BridgeDebug { false };
 
+    // Phase 5b dispatch: run the real FSR2 resolve in the bridge each frame
+    // (color + depth + jitter, MV zero until camera-VP capture). FSR2 writes
+    // a DX11-only UAV that's copied to a shared BGRA target and StretchRect'd
+    // back. Default on — this is the visible DLAA path. On any per-frame
+    // failure the bridge falls back to the transparent copy round-trip.
+    // Requires Dx9TAA_VsJitterStrength=1.0 (FSR2's accumulation expects the
+    // exact Halton sub-pixel offset that the shader applied).
+    CustomOptional<bool> Dx9TAA_BridgeFsr2 { true };
+
     // Phase 7 Session 2: round-trip every vertex shader through
     // D3DXDisassembleShader -> D3DXAssembleShader and bind the reassembled
     // (NOT transformed) bytecode. Validates the patch pipeline end to end

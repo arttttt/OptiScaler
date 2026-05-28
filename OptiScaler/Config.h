@@ -300,12 +300,13 @@ class Config
     // constant file.
     CustomOptional<int> Dx9TAA_VsJitterRegister { 250 };
     // Multiplier on the jitter magnitude. 0 = transform applied but zero
-    // offset (Session 3 identity test, passed). 1 = true sub-pixel jitter for
-    // a TAA/FSR2 resolve. Session 4 ships an exaggerated 8.0 (~4px wobble at
-    // 1080p) purely so the jitter is unmistakably visible — proving the value
-    // reaches the shader and the direction is right. Calibrate to 1.0 in
-    // Session 5 once confirmed.
-    CustomOptional<float> Dx9TAA_VsJitterStrength { 8.0f };
+    // offset (the Session 3 identity test). 1 = true sub-pixel jitter, the
+    // production value a TAA/FSR2 resolve expects. Session 4 verified the
+    // value path with an exaggerated 8.0 (visible ~4px wobble); now set to
+    // 1.0. Without an active resolve the raw image shimmers sub-pixel — set
+    // this to 0 (or Dx9TAA_VsJitter false) to silence it while working on
+    // other paths. Y-sign / UI-scoping get calibrated when the resolve lands.
+    CustomOptional<float> Dx9TAA_VsJitterStrength { 1.0f };
 
     // CAS
     CustomOptional<bool> RcasEnabled { false };

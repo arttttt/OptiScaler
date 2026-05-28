@@ -31,7 +31,11 @@ bool MotionVectors_Dx11::CreateBufferResource(ID3D11Device* device, UINT width, 
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+    // No D3D11_RESOURCE_MISC_SHARED: it's invalid combined with UAV bind and
+    // crashes CreateTexture2D inside the driver when the debug layer is off
+    // (which it always is here). The MV texture is consumed by FSR2 on the
+    // same DX11 device, so it never needs cross-API sharing.
+    desc.MiscFlags = 0;
 
     HRESULT hr = device->CreateTexture2D(&desc, nullptr, &_buffer);
     if (FAILED(hr))

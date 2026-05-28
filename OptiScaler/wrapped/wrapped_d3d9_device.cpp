@@ -376,10 +376,13 @@ void WrappedIDirect3DDevice9Ex::AccumulateDrawStats(D3DPRIMITIVETYPE primType, U
     // the highest-vertex draw of the frame) makes that the camera VP.
     // Registers hold the matrix columns (fxc packs column-major), so
     // transpose into a row-major D3DMATRIX matching the v*M convention.
+    // Floor of 256 verts: world geometry is thousands of verts, UI/fullscreen
+    // quads are a handful. Without it a frame with only small draws (menus,
+    // a clear quad) would capture a junk/identity matrix as the camera VP.
     if (_currentVsWrapper != nullptr)
     {
         const int reg = _currentVsWrapper->MvpRegister();
-        if (reg >= 0 && reg + 3 < 256 && verts > _frameCamVpMaxVerts)
+        if (reg >= 0 && reg + 3 < 256 && verts > 256 && verts > _frameCamVpMaxVerts)
         {
             for (int col = 0; col < 4; ++col)
                 for (int row = 0; row < 4; ++row)

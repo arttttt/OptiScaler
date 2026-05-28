@@ -1,11 +1,14 @@
 # Phase 5: DX9→DX11 Bridge and Upscaler Execution
 
-**Status:** 5a (color round-trip) shipped. FSR2 is now **live in the
-bridge** — the x86 FFX bundle was built and the FSR2 context creates
-successfully on HL2 (`x86 FSR2 is live` in the log). The clear-red
-stand-in is still what's on screen until the per-frame
-`ffxFsr2ContextDispatch` replaces it (the remaining 5b step). Jitter
-(Phase 7), depth (Phase 3) and MV (Phase 4) are the dispatch inputs.
+**Status:** DLAA **visibly works** on HL2 (2026-05-29). The full chain —
+VS-bytecode jitter (Phase 7) → FSR2 temporal resolve in the DX9→DX11
+bridge, with real Phase 3 depth — produces anti-aliased edges on a static
+camera. `ffxFsr2ContextDispatch` runs per frame behind `Dx9TAA_BridgeFsr2`
+(default on), falling back to the copy round-trip on any failure.
+**Known limitation:** strong ghosting under motion — motion vectors are a
+zero placeholder. The fix is real MV via camera view-projection capture
+(world-geometry draws have Model=identity, so their per-draw
+cModelViewProj *is* the camera VP) feeding Phase 4's MV compute.
 **Depends on:** Phases 2, 3, 4, 7
 
 ## FSR2 on x86 — solved

@@ -28,3 +28,6 @@
 [submodule "external/Detours"]
 	path = external/Detours
 	url = https://github.com/microsoft/Detours.git
+[submodule "external/FidelityFX-FSR2-DX11"]
+	path = external/FidelityFX-FSR2-DX11
+	url = https://github.com/optiscaler/FidelityFX-FSR2-DX11

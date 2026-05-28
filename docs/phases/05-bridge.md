@@ -1,24 +1,40 @@
 # Phase 5: DX9→DX11 Bridge and Upscaler Execution
 
-**Status:** 5a (color round-trip) + 5b stand-in (`ClearRenderTargetView`
-to red as the visible proof) shipped. FSR2 SDK dispatch is deferred —
-the x86 FFX bundle doesn't exist yet, see "Why not FSR2 yet" below.
-Pipeline-completeness work (jitter for shader-based games) continues
-independently in Phase 7.
-**Depends on:** Phases 2, 3, 4
+**Status:** 5a (color round-trip) shipped. FSR2 is now **live in the
+bridge** — the x86 FFX bundle was built and the FSR2 context creates
+successfully on HL2 (`x86 FSR2 is live` in the log). The clear-red
+stand-in is still what's on screen until the per-frame
+`ffxFsr2ContextDispatch` replaces it (the remaining 5b step). Jitter
+(Phase 7), depth (Phase 3) and MV (Phase 4) are the dispatch inputs.
+**Depends on:** Phases 2, 3, 4, 7
 
-## Why not FSR2 yet
+## FSR2 on x86 — solved
 
-`OptiScaler/library/fsr2/*.lib` ships only x64. The bridge is x86 (every
-DX9 game we care about is 32-bit). `optiscaler/FidelityFX-FSR2-DX11`
-builds for Win32 from source but needs CI / submodule work to ship an
-x86 bundle the way the x64 one is shipped today. Tracked as a separate
-task to keep the bridge work moving.
+`OptiScaler/library/fsr2/*.lib` shipped only x64; the bridge is x86
+(every DX9 game is 32-bit). The org's `optiscaler/FidelityFX-FSR2-DX11`
+fork has no x86 release, but its CMake already supports Win32
+first-class, so we build the x86 libs from source: it's a submodule at
+`external/FidelityFX-FSR2-DX11`, built by `tools/build_fsr2_x86.bat`
+(CMake `-A Win32`, DX11 backend) into `OptiScaler/library/fsr2/`. Must
+build on Windows — the fork's `FidelityFX_SC.exe` compiles the shader
+permutations (embedded into the static lib, so only the OptiScaler dll
+ships at runtime). The vcxproj links the x86 libs in three Win32-only
+`ItemDefinitionGroup`s (Debug → `_x86d`, Release/ReleaseDebug → `_x86`).
 
-5b uses `ClearRenderTargetView` painting the shared output red as the
-visible stand-in. The swap point is one block in `Render`: replace the
-`if (Dx9TAA_BridgeDebug) ClearRenderTargetView(...)` branch with the
-eventual FSR2 `Evaluate` once the x86 bundle exists.
+**We call the raw `ffx_fsr2` DX11 API, not `FSR2FeatureDx11`.** That
+wrapper is `IFeature_Dx11 : IFeature`, and `IFeature_Dx11.h` pulls in the
+DX11 ImGui menu + RCAS + output-scaling + bias passes — the whole
+upscaler/UI stack would have to build for Win32 just to reach FSR2. The
+bridge is a standalone class with its own DX11 device and already holds
+every FSR2 input, so it calls `ffxFsr2GetInterfaceDX11` /
+`ffxFsr2ContextCreate` / `...Dispatch` / `...Destroy` directly. So the
+sections below that talk about instantiating `FSR2FeatureDx11` / building
+an `NVSDK_NGX_Parameter` bag are superseded — read them as the original
+plan, not the implementation.
+
+The swap point for the dispatch is one block in `Render`: replace the
+`if (Dx9TAA_BridgeDebug) ClearRenderTargetView(...)` branch with
+`ffxFsr2ContextDispatch` fed by color/depth/MV/jitter.
 
 ## Why not the sharpen compute shader
 

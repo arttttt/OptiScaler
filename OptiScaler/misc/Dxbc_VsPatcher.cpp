@@ -109,3 +109,113 @@ void DxbcVsPatcher::Analyze(const DWORD* code, const char* tag)
 
     LOG_INFO("Phase 7a [{}]: end, {} ops, {} oPos writes", tag, opCount, oPosWrites);
 }
+
+namespace
+{
+    // Advances `decoder`/`iter` to the next executable instruction, skipping
+    // Comment (and Phase) tokens. On success returns true and reports the
+    // instruction's token span [spanBegin, spanBegin+spanLen). Returns false
+    // when the End token is reached.
+    bool NextRealInstruction(dxvk::DxsoDecodeContext& decoder, dxvk::DxsoCodeIter& iter,
+                             const uint32_t** spanBegin, uint32_t* spanLen)
+    {
+        while (true)
+        {
+            const uint32_t* before = iter.ptrAt(0);
+            if (!decoder.decodeInstruction(iter))
+                return false; // End
+
+            const auto opcode = decoder.getInstructionContext().instruction.opcode;
+            if (opcode == dxvk::DxsoOpcode::Comment || opcode == dxvk::DxsoOpcode::Phase)
+                continue; // metadata, not executable — skip
+
+            const uint32_t* after = iter.ptrAt(0);
+            *spanBegin = before;
+            *spanLen = static_cast<uint32_t>(after - before);
+            return true;
+        }
+    }
+}
+
+DxbcVsPatcher::StreamCompareResult DxbcVsPatcher::CompareInstructionStreams(const DWORD* a, const DWORD* b)
+{
+    StreamCompareResult result;
+
+    if (a == nullptr || b == nullptr)
+    {
+        result.divergenceKind = "null bytecode";
+        return result;
+    }
+
+    const uint32_t* ta = reinterpret_cast<const uint32_t*>(a);
+    const uint32_t* tb = reinterpret_cast<const uint32_t*>(b);
+
+    dxvk::DxsoProgramInfo infoA;
+    dxvk::DxsoProgramInfo infoB;
+    if (!dxvk::DxsoDecodeHeader(ta[0], infoA) || !dxvk::DxsoDecodeHeader(tb[0], infoB))
+    {
+        result.divergenceKind = "invalid header";
+        return result;
+    }
+    if (infoA.type() != infoB.type() ||
+        infoA.majorVersion() != infoB.majorVersion() ||
+        infoA.minorVersion() != infoB.minorVersion())
+    {
+        result.divergenceKind = "version/type mismatch";
+        return result;
+    }
+
+    dxvk::DxsoDecodeContext decA(infoA);
+    dxvk::DxsoDecodeContext decB(infoB);
+    dxvk::DxsoCodeIter itA(ta + 1);
+    dxvk::DxsoCodeIter itB(tb + 1);
+
+    int index = 0;
+    while (true)
+    {
+        const uint32_t* beginA = nullptr;
+        const uint32_t* beginB = nullptr;
+        uint32_t lenA = 0;
+        uint32_t lenB = 0;
+
+        const bool hasA = NextRealInstruction(decA, itA, &beginA, &lenA);
+        const bool hasB = NextRealInstruction(decB, itB, &beginB, &lenB);
+
+        if (!hasA && !hasB)
+        {
+            // Both streams ended at the same point — equal.
+            result.equal = true;
+            result.instructionCount = index;
+            return result;
+        }
+        if (hasA != hasB)
+        {
+            result.firstDivergenceIndex = index;
+            result.instructionCount = index;
+            result.divergenceKind = hasA ? "b ended early" : "a ended early";
+            return result;
+        }
+
+        // Both have an instruction. A faithful encoding of the same op
+        // produces identical tokens, so compare the spans byte-for-byte.
+        if (lenA != lenB)
+        {
+            result.firstDivergenceIndex = index;
+            result.instructionCount = index;
+            result.divergenceKind = "instruction length differs";
+            return result;
+        }
+        for (uint32_t i = 0; i < lenA; ++i)
+        {
+            if (beginA[i] != beginB[i])
+            {
+                result.firstDivergenceIndex = index;
+                result.instructionCount = index;
+                result.divergenceKind = "instruction tokens differ";
+                return result;
+            }
+        }
+
+        ++index;
+    }
+}

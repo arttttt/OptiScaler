@@ -472,6 +472,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="shaders\sharpen\Sharpen_Dx11.h" />
     <ClInclude Include="misc\Dxbc_VsPatcher.h" />
     <ClInclude Include="misc\dxbc\dxso_decoder.h" />
+    <ClInclude Include="misc\dxbc\D3DX9Shader.h" />
     <ClInclude Include="spoofing\Dxgi_Spoofing.h" />
     <ClInclude Include="spoofing\Vulkan_Spoofing.h" />
     <ClInclude Include="upscalers\dlssd\DLSSDFeature.h" />
@@ -1004,6 +1005,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="shaders\sharpen\Sharpen_Dx11.cpp" />
     <ClCompile Include="misc\Dxbc_VsPatcher.cpp" />
     <ClCompile Include="misc\dxbc\dxso_decoder.cpp" />
+    <ClCompile Include="misc\dxbc\D3DX9Shader.cpp" />
     <ClCompile Include="upscalers\dlssd\DLSSDFeature.cpp">
 
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>

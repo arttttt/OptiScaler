@@ -275,6 +275,14 @@ class Config
     // to true any time you need to re-confirm the round-trip visually.
     CustomOptional<bool> Dx9TAA_BridgeDebug { false };
 
+    // Phase 7 Session 2: round-trip every vertex shader through
+    // D3DXDisassembleShader -> D3DXAssembleShader and bind the reassembled
+    // (NOT transformed) bytecode. Validates the patch pipeline end to end
+    // before any jitter transform is added — with this on the game should
+    // render identically, proving disasm/asm/cache/wrapper-bind all work.
+    // Default off; needs d3dx9_43.dll (DirectX End-User Runtime).
+    CustomOptional<bool> Dx9TAA_VsRoundtripTest { false };
+
     // CAS
     CustomOptional<bool> RcasEnabled { false };
     CustomOptional<bool> MotionSharpnessEnabled { false };

@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 class IFeature_Dx9wDx11;
 class WrappedVertexShader9;
@@ -272,6 +273,27 @@ private:
     // release it. nullptr when the game last bound a non-wrapped shader or
     // cleared the VS.
     WrappedVertexShader9* _currentVsWrapper = nullptr;
+
+    // Phase 7 Session 2+: per-shader processing result, keyed by FNV-64 of
+    // the original bytecode. The disassemble->assemble (and, from Session 4,
+    // transform) is the expensive step; caching by hash means duplicate
+    // shaders — HL2 creates the same bytecode more than once — only pay for
+    // it once. Vertex shaders survive device Reset (not pool-bound), so the
+    // cache is never cleared.
+    struct CachedVsResult
+    {
+        bool usable = false;            // true if `bytecode` is a valid replacement
+        std::vector<DWORD> bytecode;    // reassembled (Session 2) / patched (Session 4)
+        uint32_t jitterConstSlot = 0;   // Session 4: which cN holds the jitter
+    };
+    std::unordered_map<uint64_t, CachedVsResult> _vsProcessCache;
+    int _vsRoundtripLogged = 0;         // cap roundtrip-verify log lines
+
+    // Phase 7 Session 2: run the disassemble->assemble round-trip for one
+    // shader, returning the cached result (computed on first sight of the
+    // hash, reused afterwards). Returns nullptr if the round-trip test is
+    // disabled or D3DX9 is unavailable.
+    const CachedVsResult* ProcessVertexShaderRoundtrip(const DWORD* bytecode, size_t dwordLen, uint64_t hash);
 
     // Phase 3 Mark 2: per-depth-surface activity tracking (ReShade-style).
     // Each surface bound as depth-stencil gets an entry; Draw* methods bump its

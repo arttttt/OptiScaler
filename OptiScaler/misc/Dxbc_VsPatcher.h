@@ -1,16 +1,16 @@
 #pragma once
 #include <d3d9.h>
 
-// Phase 7a: DXBC SM2/SM3 vertex shader bytecode reader. Read-only —
-// walks the token stream and logs where each shader writes its clip-
-// space output position (oPos = RasterizerOut[0]). No modification.
+// DXBC SM2/SM3 vertex-shader bytecode utilities built on the ported DXVK
+// dxso decoder. Phase 7a shipped Analyze (read-only oPos-write logging);
+// Session 1+ added length/hash helpers for the wrapper, and Session 2
+// added an instruction-stream comparator for round-trip verification.
+// None of these mutate bytecode — re-emission goes through D3DX9Shader
+// (D3DXAssembleShader), and the jitter transform lives in the device.
 //
-// Bytecode reference comes from DXVK's dxso decoder (BSD-2-Clause):
+// Bytecode reference comes from DXVK's dxso decoder (zlib/libpng):
 //   /tmp/dxvk/src/dxso/dxso_decoder.{h,cpp} for token bit layouts
 //   /tmp/dxvk/src/dxso/dxso_enums.h        for opcode / register-type values
-//
-// Once Phase 7b lands a transformer that re-emits patched bytecode, this
-// module gains an Analyze→Patch path that uses the same parser.
 class DxbcVsPatcher
 {
   public:
@@ -28,4 +28,22 @@ class DxbcVsPatcher
     // logging key — collisions are essentially impossible for shader-sized
     // payloads, so we use it the same way for shader-identifying logs.
     static uint64_t HashBytecode(const DWORD* code, size_t dwordLen);
+
+    struct StreamCompareResult
+    {
+        bool equal = false;
+        int instructionCount = 0;     // instructions walked in `a` (excludes comments)
+        int firstDivergenceIndex = -1; // instruction index where streams differ, -1 if equal
+        const char* divergenceKind = ""; // short human-readable reason for the divergence
+    };
+
+    // Walks two bytecode streams with the DXVK decoder and compares them at
+    // the instruction level: opcode, destination register (type/num/mask),
+    // and each source register (type/num/swizzle/modifier). Comments / CTAB
+    // are ignored — only executable instructions are compared, so a
+    // disassemble->reassemble roundtrip that regenerates the constant table
+    // still compares equal as long as the actual ops match. Used by the
+    // Session 2 roundtrip verifier and (Session 3) to confirm a transform
+    // changed exactly what it intended.
+    static StreamCompareResult CompareInstructionStreams(const DWORD* a, const DWORD* b);
 };

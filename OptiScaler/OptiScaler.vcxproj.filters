@@ -341,6 +341,9 @@
     <ClInclude Include="misc\dxbc\dxso_decoder.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="misc\dxbc\D3DX9Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="inputs\FfxApi_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1077,6 +1080,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="misc\dxbc\dxso_decoder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="misc\dxbc\D3DX9Shader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="hooks\Reflex_Hooks.cpp">

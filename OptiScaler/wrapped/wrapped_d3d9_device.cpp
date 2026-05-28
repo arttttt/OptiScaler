@@ -3,6 +3,7 @@
 
 #include "misc/Dxbc_VsPatcher.h"
 #include "misc/HaltonSequence.h"
+#include "misc/dxbc/D3DX9Shader.h"
 #include "upscalers/IFeature_Dx9wDx11.h"
 #include "wrapped_d3d9_depthstencil.h"
 #include "wrapped_d3d9_vertexshader.h"
@@ -1742,6 +1743,31 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateVertexShader(CONST DW
         }
         _vsWrappedCount++;
 
+        // Phase 7 Session 2: when the round-trip test is on, disassemble +
+        // reassemble the bytecode (cached by hash) and bind the reassembled
+        // — but NOT transformed — variant. If the game still renders
+        // identically, the whole patch pipeline is proven before Session 3
+        // adds the jitter transform.
+        if (dwordLen > 0 && Config::Instance()->Dx9TAA_VsRoundtripTest.value_or_default())
+        {
+            const CachedVsResult* processed = ProcessVertexShaderRoundtrip(pFunction, dwordLen, hash);
+            if (processed != nullptr && processed->usable)
+            {
+                IDirect3DVertexShader9* reassembled = nullptr;
+                const HRESULT rhr = _real->CreateVertexShader(processed->bytecode.data(), &reassembled);
+                if (SUCCEEDED(rhr) && reassembled != nullptr)
+                {
+                    wrapper->SetPatched(reassembled, processed->jitterConstSlot);
+                }
+                else
+                {
+                    LOG_WARN("Phase 7 Session 2: CreateVertexShader on reassembled bytecode failed "
+                             "(hash=0x{:016X}, hr=0x{:08X}) — using original", hash, static_cast<uint32_t>(rhr));
+                    wrapper->MarkPatchFailed();
+                }
+            }
+        }
+
         if (ppShader != nullptr)
             *ppShader = wrapper;
     }
@@ -1753,6 +1779,82 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateVertexShader(CONST DW
     }
 
     return hr;
+}
+
+// Phase 7 Session 2: disassemble -> reassemble one vertex shader and verify
+// the round-trip is faithful, caching the result by bytecode hash. Returns
+// the cached entry (usable=true when the reassembled bytecode is a valid
+// stand-in for the original). The reassembled bytecode is NOT transformed —
+// this exists purely to validate the D3DX9 pipeline + wrapper bind path
+// before the jitter transform lands in Session 3.
+const WrappedIDirect3DDevice9Ex::CachedVsResult* WrappedIDirect3DDevice9Ex::ProcessVertexShaderRoundtrip(
+    const DWORD* bytecode, size_t dwordLen, uint64_t hash)
+{
+    // Cache hit — duplicate shader (HL2 creates some twice). Skip the
+    // expensive disasm/asm entirely.
+    auto it = _vsProcessCache.find(hash);
+    if (it != _vsProcessCache.end())
+    {
+        if (_vsRoundtripLogged < 8)
+        {
+            LOG_INFO("Phase 7 Session 2: cache hit hash=0x{:016X} (usable={})", hash, it->second.usable);
+            _vsRoundtripLogged++;
+        }
+        return &it->second;
+    }
+
+    CachedVsResult result;
+
+    if (!D3DX9Shader::Available())
+    {
+        // No D3DX9 — cache the negative so we don't probe LoadLibrary again.
+        return &_vsProcessCache.emplace(hash, std::move(result)).first->second;
+    }
+
+    std::string asmText;
+    if (!D3DX9Shader::Disassemble(bytecode, asmText))
+    {
+        LOG_WARN("Phase 7 Session 2: disassemble failed hash=0x{:016X} — using original", hash);
+        return &_vsProcessCache.emplace(hash, std::move(result)).first->second;
+    }
+
+    std::vector<DWORD> reassembled;
+    std::string asmError;
+    if (!D3DX9Shader::Assemble(asmText, reassembled, asmError))
+    {
+        LOG_WARN("Phase 7 Session 2: reassemble failed hash=0x{:016X}: {} — using original", hash, asmError);
+        return &_vsProcessCache.emplace(hash, std::move(result)).first->second;
+    }
+
+    // Compare the instruction streams (comments/CTAB excluded) so we know the
+    // round-trip preserved the actual ops.
+    const auto cmp = DxbcVsPatcher::CompareInstructionStreams(bytecode, reassembled.data());
+
+    if (_vsRoundtripLogged < 8)
+    {
+        if (cmp.equal)
+        {
+            LOG_INFO("Phase 7 Session 2: round-trip OK hash=0x{:016X} ({} dwords -> {} dwords, {} ops identical)",
+                     hash, dwordLen, reassembled.size(), cmp.instructionCount);
+        }
+        else
+        {
+            LOG_WARN("Phase 7 Session 2: round-trip DIVERGED hash=0x{:016X} at op {} ({}) — binding anyway "
+                     "to test driver acceptance", hash, cmp.firstDivergenceIndex, cmp.divergenceKind);
+        }
+        _vsRoundtripLogged++;
+    }
+
+    // Even on instruction-stream divergence we still mark it usable: the
+    // reassembled bytecode is what D3DX produced from the game's own shader,
+    // so it should be driver-valid. Binding it stresses the full path; if it
+    // visibly breaks the game, that's exactly the signal we want from the
+    // test before relying on the pipeline in Session 3+.
+    result.usable = true;
+    result.bytecode = std::move(reassembled);
+    result.jitterConstSlot = 0;
+
+    return &_vsProcessCache.emplace(hash, std::move(result)).first->second;
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetVertexShader(IDirect3DVertexShader9* pShader)

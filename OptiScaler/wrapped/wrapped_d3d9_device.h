@@ -200,6 +200,11 @@ private:
     // Phase 8: capture the current 3D draw's model-view-projection, keyed by
     // (shader, stream-0 VB, draw offset), into _objMvpCurr for per-object MV.
     void CapturePerObjectMv(uint32_t drawOffset);
+    // Phase 8: at the frame boundary, log tracking stats and rotate the
+    // per-object MVP map (this frame -> previous). Called from BOTH Present
+    // and PresentEx so the map is always drained regardless of which present
+    // path the game uses (otherwise it would grow without bound -> OOM).
+    void RotatePerObjectMv();
     void ResetDepthStatsForCurrentZ();
     void LogTopDepthStats();
     void ReleaseDepthStatsMap();
@@ -260,6 +265,7 @@ private:
     std::unordered_map<uint64_t, D3DMATRIX> _objMvpPrev;
     uint64_t _stream0Vb = 0;          // identity of the bound stream-0 VB (never deref'd)
     int _objMvLogCountdown = 0;       // frames until the next aggregate stat log
+    bool _loggedObjMvCap = false;     // log once if the per-frame object cap is hit
 
     // Phase 3: scene depth surface (largest one matching backbuffer dims).
     // AddRef'd while tracked, released on dtor / Reset / replacement.

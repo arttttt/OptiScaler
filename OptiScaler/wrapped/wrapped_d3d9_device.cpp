@@ -412,6 +412,23 @@ void WrappedIDirect3DDevice9Ex::CapturePerObjectMv(uint32_t drawOffset)
     if (reg < 0)
         return; // not a 3D (view-projection) shader — UI/2D has no MVP
 
+    // Hard cap. A normal frame is at most a few thousand draws; the map is
+    // drained every Present/PresentEx by RotatePerObjectMv. If it ever balloons
+    // past this, the present path isn't draining it (a present-starved load
+    // phase that renders without flipping, or an unexpected present entry
+    // point) — stop inserting so a 32-bit process can't be driven OOM.
+    if (_objMvpCurr.size() >= 32768)
+    {
+        if (!_loggedObjMvCap)
+        {
+            _loggedObjMvCap = true;
+            LOG_WARN("Phase 8 per-object MV: hit the 32768-entry cap in one frame — the present "
+                     "path isn't draining the map; capture truncated (no OOM, but tracking is off "
+                     "this frame). Likely a present-starved load phase.");
+        }
+        return;
+    }
+
     D3DMATRIX mvp;
     if (!ReadShaderMatrix(reg, _currentVsWrapper, mvp))
         return;
@@ -425,6 +442,49 @@ void WrappedIDirect3DDevice9Ex::CapturePerObjectMv(uint32_t drawOffset)
     key = (key * 1099511628211ull) ^ static_cast<uint64_t>(drawOffset);
 
     _objMvpCurr[key] = mvp;
+}
+
+void WrappedIDirect3DDevice9Ex::RotatePerObjectMv()
+{
+    if (!Config::Instance()->Dx9TAA_PerObjectMv.value_or_default())
+        return;
+
+    // Periodically log how well tracking held: draw count, how many matched the
+    // previous frame (key stability), and the peak screen motion of any
+    // object's origin (does it detect object movement at all).
+    if (--_objMvLogCountdown <= 0)
+    {
+        _objMvLogCountdown = 120; // ~ every 2s at 60fps
+        int matched = 0;
+        float maxMotionPx = 0.0f;
+        const float halfW = 0.5f * static_cast<float>(_presentParams.BackBufferWidth);
+        const float halfH = 0.5f * static_cast<float>(_presentParams.BackBufferHeight);
+        for (const auto& kv : _objMvpCurr)
+        {
+            auto prev = _objMvpPrev.find(kv.first);
+            if (prev == _objMvpPrev.end())
+                continue;
+            ++matched;
+            // Object origin (0,0,0,1) in clip space is the matrix's 4th row
+            // (row-major, pos*M); compare its NDC across frames.
+            const D3DMATRIX& c = kv.second;
+            const D3DMATRIX& p = prev->second;
+            if (std::fabs(c.m[3][3]) < 1e-6f || std::fabs(p.m[3][3]) < 1e-6f)
+                continue;
+            const float cx = c.m[3][0] / c.m[3][3], cy = c.m[3][1] / c.m[3][3];
+            const float px = p.m[3][0] / p.m[3][3], py = p.m[3][1] / p.m[3][3];
+            const float dpx = (cx - px) * halfW, dpy = (cy - py) * halfH;
+            const float motion = std::sqrt(dpx * dpx + dpy * dpy);
+            if (motion > maxMotionPx)
+                maxMotionPx = motion;
+        }
+        LOG_INFO("Phase 8 per-object MV: {} draws tracked, {} matched prev frame, "
+                 "peak origin motion {:.1f}px",
+                 _objMvpCurr.size(), matched, maxMotionPx);
+    }
+
+    _objMvpPrev = std::move(_objMvpCurr);
+    _objMvpCurr.clear();
 }
 
 void WrappedIDirect3DDevice9Ex::AccumulateDrawStats(D3DPRIMITIVETYPE primType, UINT primCount, UINT verticesOverride)
@@ -1201,46 +1261,10 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
         _frameCamVpValid = false;
         _frameCamVpMaxVerts = 0;
 
-        // Phase 8: rotate the per-object MVP map (this frame -> previous) so
-        // moving objects can be matched across frames. Periodically log how
-        // well tracking held: draw count, how many matched the previous frame,
-        // and the peak screen motion of any object's origin. 8a is capture +
-        // verify only; the MV emit consumes _objMvpPrev/_objMvpCurr next.
-        if (Config::Instance()->Dx9TAA_PerObjectMv.value_or_default())
-        {
-            if (--_objMvLogCountdown <= 0)
-            {
-                _objMvLogCountdown = 120; // ~ every 2s at 60fps
-                int matched = 0;
-                float maxMotionPx = 0.0f;
-                const float halfW = 0.5f * static_cast<float>(_presentParams.BackBufferWidth);
-                const float halfH = 0.5f * static_cast<float>(_presentParams.BackBufferHeight);
-                for (const auto& kv : _objMvpCurr)
-                {
-                    auto prev = _objMvpPrev.find(kv.first);
-                    if (prev == _objMvpPrev.end())
-                        continue;
-                    ++matched;
-                    // Object origin (0,0,0,1) in clip space is the matrix's 4th
-                    // row (row-major, pos*M); compare its NDC across frames.
-                    const D3DMATRIX& c = kv.second;
-                    const D3DMATRIX& p = prev->second;
-                    if (std::fabs(c.m[3][3]) < 1e-6f || std::fabs(p.m[3][3]) < 1e-6f)
-                        continue;
-                    const float cx = c.m[3][0] / c.m[3][3], cy = c.m[3][1] / c.m[3][3];
-                    const float px = p.m[3][0] / p.m[3][3], py = p.m[3][1] / p.m[3][3];
-                    const float dpx = (cx - px) * halfW, dpy = (cy - py) * halfH;
-                    const float motion = std::sqrt(dpx * dpx + dpy * dpy);
-                    if (motion > maxMotionPx)
-                        maxMotionPx = motion;
-                }
-                LOG_INFO("Phase 8 per-object MV: {} draws tracked, {} matched prev frame, "
-                         "peak origin motion {:.1f}px",
-                         _objMvpCurr.size(), matched, maxMotionPx);
-            }
-            _objMvpPrev = std::move(_objMvpCurr);
-            _objMvpCurr.clear();
-        }
+        // Phase 8: drain the per-object MVP map (rotate this frame -> previous
+        // and log tracking stats). 8a is capture + verify only; the MV emit
+        // consumes _objMvpPrev/_objMvpCurr next.
+        RotatePerObjectMv();
 
         LogTopDepthStats();
         IdentifySceneDepth();
@@ -2478,6 +2502,10 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::PresentEx(CONST RECT* pSour
         }
         _vsConstCallsThisFrame = 0;
         MaybeDumpVsConstUsage();
+
+        // Phase 8: drain the per-object MVP map here too — some D3D9Ex games
+        // flip through PresentEx, and the map must never grow unbounded.
+        RotatePerObjectMv();
 
         LogTopDepthStats();
         IdentifySceneDepth();

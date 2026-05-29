@@ -401,6 +401,12 @@ bool WrappedIDirect3DDevice9Ex::ReadShaderMatrix(int reg, WrappedVertexShader9* 
     return true;
 }
 
+// Per-object MV buffers are pre-reserved to this size and never grow past it,
+// so capture makes zero heap allocations in steady state. Small per-node
+// allocations (the old unordered_map) fragmented the 32-bit address space and
+// broke Source's contiguous ~48 MB hunk reservation during precache.
+static constexpr size_t kPerObjectMvCap = 16384;
+
 void WrappedIDirect3DDevice9Ex::CapturePerObjectMv(uint32_t drawOffset)
 {
     if (!Config::Instance()->Dx9TAA_PerObjectMv.value_or_default())
@@ -412,19 +418,27 @@ void WrappedIDirect3DDevice9Ex::CapturePerObjectMv(uint32_t drawOffset)
     if (reg < 0)
         return; // not a 3D (view-projection) shader — UI/2D has no MVP
 
-    // Hard cap. A normal frame is at most a few thousand draws; the map is
-    // drained every Present/PresentEx by RotatePerObjectMv. If it ever balloons
-    // past this, the present path isn't draining it (a present-starved load
-    // phase that renders without flipping, or an unexpected present entry
-    // point) — stop inserting so a 32-bit process can't be driven OOM.
-    if (_objMvpCurr.size() >= 32768)
+    // Reserve both buffers once. Both, not just _objMvpCurr: RotatePerObjectMv
+    // swaps them, so an unreserved _objMvpPrev would hand its zero capacity to
+    // _objMvpCurr next frame and reintroduce per-push reallocation.
+    if (_objMvpCurr.capacity() < kPerObjectMvCap)
+    {
+        _objMvpCurr.reserve(kPerObjectMvCap);
+        _objMvpPrev.reserve(kPerObjectMvCap);
+    }
+
+    // Cap. A normal frame is a few thousand draws; the buffer is drained every
+    // Present/PresentEx by RotatePerObjectMv. If it fills, the present path
+    // isn't draining it (a present-starved load phase that renders without
+    // flipping) — stop recording rather than reallocate past the reserved span.
+    if (_objMvpCurr.size() >= kPerObjectMvCap)
     {
         if (!_loggedObjMvCap)
         {
             _loggedObjMvCap = true;
-            LOG_WARN("Phase 8 per-object MV: hit the 32768-entry cap in one frame — the present "
-                     "path isn't draining the map; capture truncated (no OOM, but tracking is off "
-                     "this frame). Likely a present-starved load phase.");
+            LOG_WARN("Phase 8 per-object MV: hit the {}-entry cap in one frame — the present path "
+                     "isn't draining the buffer; capture truncated this frame. Likely a "
+                     "present-starved load phase.", kPerObjectMvCap);
         }
         return;
     }
@@ -436,12 +450,13 @@ void WrappedIDirect3DDevice9Ex::CapturePerObjectMv(uint32_t drawOffset)
     // Key the draw by shader identity + stream-0 vertex buffer + draw offset so
     // objects sharing a shader and/or a VB stay distinct. Cross-frame pointer
     // identity is the inherent fragility (a freed+reused VB aliases) —
-    // accepted; the Present match-rate log shows how well it holds in practice.
+    // accepted; the match-rate log shows how well it holds in practice. Keys
+    // may repeat within a frame (multi-pass); that's fine for the verify match.
     uint64_t key = _currentVsWrapper->Hash();
     key = (key * 1099511628211ull) ^ _stream0Vb;
     key = (key * 1099511628211ull) ^ static_cast<uint64_t>(drawOffset);
 
-    _objMvpCurr[key] = mvp;
+    _objMvpCurr.emplace_back(key, mvp);
 }
 
 void WrappedIDirect3DDevice9Ex::RotatePerObjectMv()
@@ -455,20 +470,27 @@ void WrappedIDirect3DDevice9Ex::RotatePerObjectMv()
     if (--_objMvLogCountdown <= 0)
     {
         _objMvLogCountdown = 120; // ~ every 2s at 60fps
+
+        // Sort the previous frame by key so this frame can match against it by
+        // binary search — in place, no heap allocation.
+        std::sort(_objMvpPrev.begin(), _objMvpPrev.end(),
+                  [](const auto& a, const auto& b) { return a.first < b.first; });
+
         int matched = 0;
         float maxMotionPx = 0.0f;
         const float halfW = 0.5f * static_cast<float>(_presentParams.BackBufferWidth);
         const float halfH = 0.5f * static_cast<float>(_presentParams.BackBufferHeight);
-        for (const auto& kv : _objMvpCurr)
+        for (const auto& cur : _objMvpCurr)
         {
-            auto prev = _objMvpPrev.find(kv.first);
-            if (prev == _objMvpPrev.end())
+            auto it = std::lower_bound(_objMvpPrev.begin(), _objMvpPrev.end(), cur.first,
+                                       [](const auto& e, uint64_t k) { return e.first < k; });
+            if (it == _objMvpPrev.end() || it->first != cur.first)
                 continue;
             ++matched;
             // Object origin (0,0,0,1) in clip space is the matrix's 4th row
             // (row-major, pos*M); compare its NDC across frames.
-            const D3DMATRIX& c = kv.second;
-            const D3DMATRIX& p = prev->second;
+            const D3DMATRIX& c = cur.second;
+            const D3DMATRIX& p = it->second;
             if (std::fabs(c.m[3][3]) < 1e-6f || std::fabs(p.m[3][3]) < 1e-6f)
                 continue;
             const float cx = c.m[3][0] / c.m[3][3], cy = c.m[3][1] / c.m[3][3];
@@ -483,7 +505,10 @@ void WrappedIDirect3DDevice9Ex::RotatePerObjectMv()
                  _objMvpCurr.size(), matched, maxMotionPx);
     }
 
-    _objMvpPrev = std::move(_objMvpCurr);
+    // Rotate: swap (O(1), exchanges the buffers — both keep their reserved
+    // capacity, no realloc) then clear this-frame's (keeps capacity, no
+    // dealloc). Zero heap traffic per frame.
+    std::swap(_objMvpCurr, _objMvpPrev);
     _objMvpCurr.clear();
 }
 

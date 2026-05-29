@@ -323,13 +323,11 @@ class Config
     // frame's matrix per key so a moving object's screen-space motion can be
     // derived — camera-only MV leaves moving objects ghosting. 8a captures and
     // logs aggregate tracking/motion stats; the MV emit consumes it next.
-    //
-    // DEFAULT OFF: the unordered_map capture churns many small heap nodes
-    // during Source's present-starved precache, fragmenting the 32-bit address
-    // space so the engine can't reserve its contiguous ~48 MB level hunk
-    // ("failed to allocate minimum memory requirement"). Re-enabled once the
-    // storage is reworked to be allocation-free (pre-reserved flat buffers).
-    CustomOptional<bool> Dx9TAA_PerObjectMv { false };
+    // Storage is allocation-free in steady state (pre-reserved flat buffers,
+    // swap+clear rotation) — an earlier unordered_map version churned heap
+    // nodes during Source's present-starved precache and fragmented the 32-bit
+    // address space, breaking the engine's contiguous ~48 MB hunk allocation.
+    CustomOptional<bool> Dx9TAA_PerObjectMv { true };
 
     // CAS
     CustomOptional<bool> RcasEnabled { false };

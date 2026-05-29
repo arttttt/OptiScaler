@@ -2,9 +2,11 @@
 
 #include <d3d9.h>
 
+#include <algorithm>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "misc/Dxbc_VsPatcher.h"
@@ -257,12 +259,19 @@ private:
     bool _loggedMatrixDef = false;    // log once when a def constant lands in a captured matrix
 
     // Phase 8: per-object MV capture. Each 3D draw's model-view-projection (the
-    // bound shader's matrix register, read from the shadow) is stored keyed by
-    // (shader hash, stream-0 VB pointer, draw offset). At Present the maps
-    // rotate so a moving object can be matched across frames and its screen
-    // motion derived — camera MV alone leaves moving objects ghosting.
-    std::unordered_map<uint64_t, D3DMATRIX> _objMvpCurr;
-    std::unordered_map<uint64_t, D3DMATRIX> _objMvpPrev;
+    // bound shader's matrix register, read from the shadow) is recorded keyed
+    // by (shader hash, stream-0 VB pointer, draw offset). At each present the
+    // buffers rotate so a moving object can be matched across frames and its
+    // screen motion derived — camera MV alone leaves moving objects ghosting.
+    //
+    // FLAT, PRE-RESERVED vectors (not unordered_map) on purpose: per-node heap
+    // churn during Source's present-starved precache fragmented the 32-bit
+    // address space and broke the engine's contiguous ~48 MB hunk allocation.
+    // These reserve once; capture is push_back into reserved space, rotation is
+    // swap+clear (keeps capacity) — zero heap alloc/dealloc in steady state.
+    // Keys can repeat within a frame (multi-pass); the verify match sorts prev.
+    std::vector<std::pair<uint64_t, D3DMATRIX>> _objMvpCurr;
+    std::vector<std::pair<uint64_t, D3DMATRIX>> _objMvpPrev;
     uint64_t _stream0Vb = 0;          // identity of the bound stream-0 VB (never deref'd)
     int _objMvLogCountdown = 0;       // frames until the next aggregate stat log
     bool _loggedObjMvCap = false;     // log once if the per-frame object cap is hit

@@ -145,7 +145,9 @@ MotionVectors_Dx11::MotionVectors_Dx11(std::string name, ID3D11Device* device)
         return;
     }
 
+    LOG_INFO("[{0}] [bc] MV ctor: compiling cs_5_0 (shader src {1} bytes)...", _name, mvShaderCode.size());
     ID3DBlob* shaderBlob = MV_CompileShader(mvShaderCode.c_str(), "CSMain", "cs_5_0");
+    LOG_INFO("[{0}] [bc] MV ctor: compile returned (blob={1})", _name, shaderBlob != nullptr);
     if (shaderBlob == nullptr)
     {
         LOG_ERROR("[{0}] MV_CompileShader error", _name);
@@ -155,6 +157,7 @@ MotionVectors_Dx11::MotionVectors_Dx11(std::string name, ID3D11Device* device)
     HRESULT hr = _device->CreateComputeShader(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(), nullptr,
                                               &_computeShader);
     shaderBlob->Release();
+    LOG_INFO("[{0}] [bc] MV ctor: CreateComputeShader hr=0x{1:08X}", _name, (UINT) hr);
 
     if (FAILED(hr))
     {
@@ -168,6 +171,7 @@ MotionVectors_Dx11::MotionVectors_Dx11(std::string name, ID3D11Device* device)
     cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     hr = device->CreateBuffer(&cbDesc, nullptr, &_constantBuffer);
+    LOG_INFO("[{0}] [bc] MV ctor: CreateBuffer(cbuffer) hr=0x{1:08X}", _name, (UINT) hr);
     if (FAILED(hr))
     {
         LOG_ERROR("[{0}] CreateBuffer (cbuffer) error: {1:X}", _name, (UINT) hr);
@@ -175,6 +179,7 @@ MotionVectors_Dx11::MotionVectors_Dx11(std::string name, ID3D11Device* device)
     }
 
     _init = true;
+    LOG_INFO("[{0}] [bc] MV ctor: done, _init=true", _name);
 }
 
 MotionVectors_Dx11::~MotionVectors_Dx11()

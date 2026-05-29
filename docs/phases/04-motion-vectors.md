@@ -1,11 +1,28 @@
 # Phase 4: Camera Motion Vector Generation
 
-**Status:** Standalone dispatcher + HLSL + view/proj capture done.
-Bridge wiring is the FSR2 hookup in Phase 5b. **Output is zero on
-shader-based games** (HL2, NFSU, every non-fixed-function title) until
-Phase 7 lands matrix capture via vertex-shader bytecode patching — the
-same root cause as the dead [Phase 2](02-jitter.md) `SetTransform` path.
-**Depends on:** Phase 1
+**Status:** DONE for camera motion (2026-05-29) and wired into the FSR2
+bridge — camera-motion ghosting on HL2 is much reduced. The camera
+view-projection is captured from the game's shader constants (not
+SetTransform, which is dead): each shader's constant table is parsed for
+a viewproj-named matrix register; the VS float constants are shadowed;
+at each draw the bound shader's VP register is read; the highest-vertex
+draw of the frame (world geometry, Model=identity) gives the camera VP.
+Registers hold matrix columns (fxc column-major) → transposed to
+row-major. The bridge runs this compute over the shared depth and feeds
+FSR2. Per-object motion (moving characters/props) is still unhandled —
+that's Phase 8.
+
+**Two gotchas, both verified on HL2:**
+- **MV matrix pairing is empirically N-1/N-2, not the "obvious" no-lag
+  pair.** Feeding the freshly-captured this-frame VP as `current` made
+  ghosting much worse; `current=_currentViewProj, previous=_prevViewProj`
+  (one rotation behind) ghosts far less. The resolved depth pairs with the
+  previous finalized VP (capture/depth timing). Do not "correct" this.
+- The dispatcher had never run before this; two latent bugs surfaced —
+  `MISC_SHARED | BIND_UNORDERED_ACCESS` crashed CreateTexture2D, and
+  MV_CompileShader freed d3dcompiler before the caller used the returned
+  blob (vtable in the DLL). Both fixed.
+**Depends on:** Phase 1, 3 (depth), 7 (jitter), 5b (bridge)
 
 ## Goal
 

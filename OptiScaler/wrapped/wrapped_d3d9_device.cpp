@@ -1175,13 +1175,19 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
                     float invCur[16] = {};
                     float prevVP[16] = {};
                     bool mvValid = false;
-                    if (_camVpValid && _viewProjHasPrev)
+                    // current = THIS frame's captured camera VP, previous = the
+                    // last finalized VP. The rotation that promotes _frameCamVp
+                    // into _currentViewProj runs *after* this Render, so
+                    // _currentViewProj is still the previous frame's here. Using
+                    // it directly avoids a one-frame MV lag (which smears during
+                    // motion and "catches up" when motion stops).
+                    if (_frameCamVpValid && _camVpValid)
                     {
                         D3DMATRIX inv;
-                        if (Mat4Inverse(&inv, _currentViewProj))
+                        if (Mat4Inverse(&inv, _frameCamVp))
                         {
                             memcpy(invCur, &inv.m[0][0], sizeof(invCur));
-                            memcpy(prevVP, &_prevViewProj.m[0][0], sizeof(prevVP));
+                            memcpy(prevVP, &_currentViewProj.m[0][0], sizeof(prevVP));
                             mvValid = true;
                         }
                     }
@@ -2019,7 +2025,12 @@ const WrappedIDirect3DDevice9Ex::CachedVsResult* WrappedIDirect3DDevice9Ex::Proc
     bool jittered = false;
     uint32_t jitterReg = 0;
 
-    if (Config::Instance()->Dx9TAA_VsJitter.value_or_default())
+    // Only jitter shaders that transform by a view-projection matrix, i.e. the
+    // 3D scene. UI/2D shaders (no viewproj — the HUD, the crosshair) must NOT
+    // be jittered: jittering them makes FSR2 shimmer and ghost the HUD. This
+    // is the correct TAA design (jitter the scene, leave the UI alone), and it
+    // reuses the viewproj-register detection we already do for motion vectors.
+    if (Config::Instance()->Dx9TAA_VsJitter.value_or_default() && result.mvpRegister >= 0)
     {
         jitterReg = static_cast<uint32_t>(Config::Instance()->Dx9TAA_VsJitterRegister.value_or_default());
         const auto usage = DxbcVsPatcher::AnalyzeRegisterUsage(bytecode);

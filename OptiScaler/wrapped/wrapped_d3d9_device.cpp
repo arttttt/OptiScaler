@@ -364,6 +364,69 @@ void WrappedIDirect3DDevice9Ex::RegisterDepthSurfaceForStats(IDirect3DSurface9* 
     _currentDepthForStats = surface;
 }
 
+bool WrappedIDirect3DDevice9Ex::ReadShaderMatrix(int reg, WrappedVertexShader9* vs, D3DMATRIX& out)
+{
+    if (vs == nullptr || reg < 0 || reg + 3 >= 256)
+        return false;
+
+    // The 4 matrix registers, taken from the API constant shadow.
+    float regs[4][4];
+    for (int col = 0; col < 4; ++col)
+        for (int row = 0; row < 4; ++row)
+            regs[col][row] = _vsConstShadow[reg + col][row];
+
+    // Overlay any baked `def cN` that lands in this matrix and that the game
+    // never set via the API. def constants bypass SetVertexShaderConstantF
+    // (DXVK), so the shadow holds stale/zero for them. Rare for a
+    // view-projection (camera-dynamic), but per-object matrices can use it.
+    for (const auto& d : vs->FloatDefs())
+    {
+        if (d.reg < reg || d.reg > reg + 3 || _gameVsConstWritten[d.reg])
+            continue;
+        const int col = d.reg - reg;
+        for (int row = 0; row < 4; ++row)
+            regs[col][row] = d.value[row];
+        if (!_loggedMatrixDef)
+        {
+            _loggedMatrixDef = true;
+            LOG_INFO("MV: matrix register c{} fed from a shader def (game never set it via API)", d.reg);
+        }
+    }
+
+    // Registers hold the matrix columns (fxc packs column-major), so transpose
+    // into a row-major D3DMATRIX matching the v*M convention.
+    for (int col = 0; col < 4; ++col)
+        for (int row = 0; row < 4; ++row)
+            out.m[row][col] = regs[col][row];
+    return true;
+}
+
+void WrappedIDirect3DDevice9Ex::CapturePerObjectMv(uint32_t drawOffset)
+{
+    if (!Config::Instance()->Dx9TAA_PerObjectMv.value_or_default())
+        return;
+    if (_currentVsWrapper == nullptr || _stream0Vb == 0)
+        return;
+
+    const int reg = _currentVsWrapper->MvpRegister();
+    if (reg < 0)
+        return; // not a 3D (view-projection) shader — UI/2D has no MVP
+
+    D3DMATRIX mvp;
+    if (!ReadShaderMatrix(reg, _currentVsWrapper, mvp))
+        return;
+
+    // Key the draw by shader identity + stream-0 vertex buffer + draw offset so
+    // objects sharing a shader and/or a VB stay distinct. Cross-frame pointer
+    // identity is the inherent fragility (a freed+reused VB aliases) —
+    // accepted; the Present match-rate log shows how well it holds in practice.
+    uint64_t key = _currentVsWrapper->Hash();
+    key = (key * 1099511628211ull) ^ _stream0Vb;
+    key = (key * 1099511628211ull) ^ static_cast<uint64_t>(drawOffset);
+
+    _objMvpCurr[key] = mvp;
+}
+
 void WrappedIDirect3DDevice9Ex::AccumulateDrawStats(D3DPRIMITIVETYPE primType, UINT primCount, UINT verticesOverride)
 {
     const int verts = verticesOverride > 0
@@ -382,40 +445,15 @@ void WrappedIDirect3DDevice9Ex::AccumulateDrawStats(D3DPRIMITIVETYPE primType, U
     if (_currentVsWrapper != nullptr)
     {
         const int reg = _currentVsWrapper->MvpRegister();
-        if (reg >= 0 && reg + 3 < 256 && verts > 256 && verts > _frameCamVpMaxVerts)
+        if (reg >= 0 && verts > 256 && verts > _frameCamVpMaxVerts)
         {
-            // The 4 matrix registers, taken from the API constant shadow.
-            float regs[4][4];
-            for (int col = 0; col < 4; ++col)
-                for (int row = 0; row < 4; ++row)
-                    regs[col][row] = _vsConstShadow[reg + col][row];
-
-            // Overlay any baked `def cN` that lands in this matrix and that the
-            // game never set via the API. def constants bypass
-            // SetVertexShaderConstantF (DXVK), so the shadow holds stale/zero
-            // for them. Rare for a view-projection (it's camera-dynamic), but
-            // correct, and the path per-object MV will rely on.
-            for (const auto& d : _currentVsWrapper->FloatDefs())
+            D3DMATRIX m;
+            if (ReadShaderMatrix(reg, _currentVsWrapper, m))
             {
-                if (d.reg < reg || d.reg > reg + 3 || _gameVsConstWritten[d.reg])
-                    continue;
-                const int col = d.reg - reg;
-                for (int row = 0; row < 4; ++row)
-                    regs[col][row] = d.value[row];
-                if (!_loggedMatrixDef)
-                {
-                    _loggedMatrixDef = true;
-                    LOG_INFO("MV: matrix register c{} fed from a shader def (game never set it via API)", d.reg);
-                }
+                _frameCamVp = m;
+                _frameCamVpMaxVerts = verts;
+                _frameCamVpValid = true;
             }
-
-            // Registers hold the matrix columns (fxc packs column-major), so
-            // transpose into a row-major D3DMATRIX matching the v*M convention.
-            for (int col = 0; col < 4; ++col)
-                for (int row = 0; row < 4; ++row)
-                    _frameCamVp.m[row][col] = regs[col][row];
-            _frameCamVpMaxVerts = verts;
-            _frameCamVpValid = true;
         }
     }
 
@@ -1163,6 +1201,47 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
         _frameCamVpValid = false;
         _frameCamVpMaxVerts = 0;
 
+        // Phase 8: rotate the per-object MVP map (this frame -> previous) so
+        // moving objects can be matched across frames. Periodically log how
+        // well tracking held: draw count, how many matched the previous frame,
+        // and the peak screen motion of any object's origin. 8a is capture +
+        // verify only; the MV emit consumes _objMvpPrev/_objMvpCurr next.
+        if (Config::Instance()->Dx9TAA_PerObjectMv.value_or_default())
+        {
+            if (--_objMvLogCountdown <= 0)
+            {
+                _objMvLogCountdown = 120; // ~ every 2s at 60fps
+                int matched = 0;
+                float maxMotionPx = 0.0f;
+                const float halfW = 0.5f * static_cast<float>(_presentParams.BackBufferWidth);
+                const float halfH = 0.5f * static_cast<float>(_presentParams.BackBufferHeight);
+                for (const auto& kv : _objMvpCurr)
+                {
+                    auto prev = _objMvpPrev.find(kv.first);
+                    if (prev == _objMvpPrev.end())
+                        continue;
+                    ++matched;
+                    // Object origin (0,0,0,1) in clip space is the matrix's 4th
+                    // row (row-major, pos*M); compare its NDC across frames.
+                    const D3DMATRIX& c = kv.second;
+                    const D3DMATRIX& p = prev->second;
+                    if (std::fabs(c.m[3][3]) < 1e-6f || std::fabs(p.m[3][3]) < 1e-6f)
+                        continue;
+                    const float cx = c.m[3][0] / c.m[3][3], cy = c.m[3][1] / c.m[3][3];
+                    const float px = p.m[3][0] / p.m[3][3], py = p.m[3][1] / p.m[3][3];
+                    const float dpx = (cx - px) * halfW, dpy = (cy - py) * halfH;
+                    const float motion = std::sqrt(dpx * dpx + dpy * dpy);
+                    if (motion > maxMotionPx)
+                        maxMotionPx = motion;
+                }
+                LOG_INFO("Phase 8 per-object MV: {} draws tracked, {} matched prev frame, "
+                         "peak origin motion {:.1f}px",
+                         _objMvpCurr.size(), matched, maxMotionPx);
+            }
+            _objMvpPrev = std::move(_objMvpCurr);
+            _objMvpCurr.clear();
+        }
+
         LogTopDepthStats();
         IdentifySceneDepth();
         AttemptDepthReadback();
@@ -1829,12 +1908,16 @@ float STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetNPatchMode()
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount)
 {
     AccumulateDrawStats(PrimitiveType, PrimitiveCount, 0);
+    CapturePerObjectMv(StartVertex);
     return _real->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
 }
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::DrawIndexedPrimitive(D3DPRIMITIVETYPE PrimitiveType, INT BaseVertexIndex, UINT MinVertexIndex, UINT NumVertices, UINT startIndex, UINT primCount)
 {
     AccumulateDrawStats(PrimitiveType, primCount, NumVertices);
+    // Mix base vertex + start index so sub-meshes drawn from one shared VB key
+    // distinctly (each is a different object).
+    CapturePerObjectMv((static_cast<uint32_t>(BaseVertexIndex) * 2654435761u) ^ (startIndex + 0x9e3779b9u));
     return _real->DrawIndexedPrimitive(PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, startIndex, primCount);
 }
 
@@ -2262,6 +2345,11 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::GetVertexShaderConstantB(UI
 
 HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetStreamSource(UINT StreamNumber, IDirect3DVertexBuffer9* pStreamData, UINT OffsetInBytes, UINT Stride)
 {
+    // Phase 8: track the game's stream-0 vertex buffer identity for per-object
+    // MV keying (pointer value only, never dereferenced). Our internal passes
+    // bind their VBs straight on _real, so they don't clobber this.
+    if (StreamNumber == 0)
+        _stream0Vb = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pStreamData));
     return _real->SetStreamSource(StreamNumber, pStreamData, OffsetInBytes, Stride);
 }
 

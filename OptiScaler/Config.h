@@ -317,6 +317,15 @@ class Config
     // other paths. Y-sign / UI-scoping get calibrated when the resolve lands.
     CustomOptional<float> Dx9TAA_VsJitterStrength { 1.0f };
 
+    // Phase 8: per-object motion-vector capture. On each 3D draw, capture the
+    // bound shader's model-view-projection out of the constant shadow, keyed by
+    // (shader, stream-0 vertex buffer, draw offset), and keep the previous
+    // frame's matrix per key so a moving object's screen-space motion can be
+    // derived — camera-only MV leaves moving objects ghosting. 8a captures and
+    // logs aggregate tracking/motion stats; the MV emit consumes it next.
+    // Default on for bring-up.
+    CustomOptional<bool> Dx9TAA_PerObjectMv { true };
+
     // CAS
     CustomOptional<bool> RcasEnabled { false };
     CustomOptional<bool> MotionSharpnessEnabled { false };

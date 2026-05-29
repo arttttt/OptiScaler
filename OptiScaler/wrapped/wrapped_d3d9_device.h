@@ -192,6 +192,14 @@ private:
     // Phase 3 Mark 2 helpers
     void RegisterDepthSurfaceForStats(IDirect3DSurface9* surface);
     void AccumulateDrawStats(D3DPRIMITIVETYPE primType, UINT primCount, UINT verticesOverride);
+    // Phase 8: read a shader's 4x4 matrix at constant register `reg` out of the
+    // VS constant shadow (with the baked-def overlay) into a row-major
+    // D3DMATRIX. Shared by camera-VP capture and per-object MV. Returns false
+    // if reg is out of range or vs is null.
+    bool ReadShaderMatrix(int reg, WrappedVertexShader9* vs, D3DMATRIX& out);
+    // Phase 8: capture the current 3D draw's model-view-projection, keyed by
+    // (shader, stream-0 VB, draw offset), into _objMvpCurr for per-object MV.
+    void CapturePerObjectMv(uint32_t drawOffset);
     void ResetDepthStatsForCurrentZ();
     void LogTopDepthStats();
     void ReleaseDepthStatsMap();
@@ -242,6 +250,16 @@ private:
     bool _camVpValid = false;         // _currentViewProj holds a real camera VP
     bool _loggedCamVp = false;
     bool _loggedMatrixDef = false;    // log once when a def constant lands in a captured matrix
+
+    // Phase 8: per-object MV capture. Each 3D draw's model-view-projection (the
+    // bound shader's matrix register, read from the shadow) is stored keyed by
+    // (shader hash, stream-0 VB pointer, draw offset). At Present the maps
+    // rotate so a moving object can be matched across frames and its screen
+    // motion derived — camera MV alone leaves moving objects ghosting.
+    std::unordered_map<uint64_t, D3DMATRIX> _objMvpCurr;
+    std::unordered_map<uint64_t, D3DMATRIX> _objMvpPrev;
+    uint64_t _stream0Vb = 0;          // identity of the bound stream-0 VB (never deref'd)
+    int _objMvLogCountdown = 0;       // frames until the next aggregate stat log
 
     // Phase 3: scene depth surface (largest one matching backbuffer dims).
     // AddRef'd while tracked, released on dtor / Reset / replacement.

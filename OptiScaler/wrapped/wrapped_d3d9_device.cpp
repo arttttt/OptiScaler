@@ -384,9 +384,36 @@ void WrappedIDirect3DDevice9Ex::AccumulateDrawStats(D3DPRIMITIVETYPE primType, U
         const int reg = _currentVsWrapper->MvpRegister();
         if (reg >= 0 && reg + 3 < 256 && verts > 256 && verts > _frameCamVpMaxVerts)
         {
+            // The 4 matrix registers, taken from the API constant shadow.
+            float regs[4][4];
             for (int col = 0; col < 4; ++col)
                 for (int row = 0; row < 4; ++row)
-                    _frameCamVp.m[row][col] = _vsConstShadow[reg + col][row];
+                    regs[col][row] = _vsConstShadow[reg + col][row];
+
+            // Overlay any baked `def cN` that lands in this matrix and that the
+            // game never set via the API. def constants bypass
+            // SetVertexShaderConstantF (DXVK), so the shadow holds stale/zero
+            // for them. Rare for a view-projection (it's camera-dynamic), but
+            // correct, and the path per-object MV will rely on.
+            for (const auto& d : _currentVsWrapper->FloatDefs())
+            {
+                if (d.reg < reg || d.reg > reg + 3 || _gameVsConstWritten[d.reg])
+                    continue;
+                const int col = d.reg - reg;
+                for (int row = 0; row < 4; ++row)
+                    regs[col][row] = d.value[row];
+                if (!_loggedMatrixDef)
+                {
+                    _loggedMatrixDef = true;
+                    LOG_INFO("MV: matrix register c{} fed from a shader def (game never set it via API)", d.reg);
+                }
+            }
+
+            // Registers hold the matrix columns (fxc packs column-major), so
+            // transpose into a row-major D3DMATRIX matching the v*M convention.
+            for (int col = 0; col < 4; ++col)
+                for (int row = 0; row < 4; ++row)
+                    _frameCamVp.m[row][col] = regs[col][row];
             _frameCamVpMaxVerts = verts;
             _frameCamVpValid = true;
         }
@@ -1906,7 +1933,10 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::CreateVertexShader(CONST DW
             // MV: remember the view-projection register on the wrapper (set
             // even when not patched — it's independent of jitter).
             if (processed != nullptr)
+            {
                 wrapper->SetMvpRegister(processed->mvpRegister);
+                wrapper->SetFloatDefs(processed->floatDefs);
+            }
             if (processed != nullptr && processed->usable)
             {
                 IDirect3DVertexShader9* patched = nullptr;
@@ -2020,6 +2050,13 @@ const WrappedIDirect3DDevice9Ex::CachedVsResult* WrappedIDirect3DDevice9Ex::Proc
     // MV: note the view-projection register from the constant table (per
     // bytecode, so cached). Used at draw time to capture the camera VP.
     result.mvpRegister = DxbcVsPatcher::FindViewProjRegister(asmText);
+
+    // MV: for 3D shaders, also capture the bytecode's baked `def cN` float
+    // constants. If part of the matrix is a def it never reaches
+    // SetVertexShaderConstantF (DXVK gap), so the API shadow would be stale —
+    // the draw-time capture overlays these onto the matrix registers.
+    if (result.mvpRegister >= 0)
+        result.floatDefs = DxbcVsPatcher::ExtractFloatDefs(bytecode);
 
     std::string finalAsm = asmText;
     bool jittered = false;
@@ -2172,20 +2209,19 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::SetVertexShaderConstantF(UI
             dst[1] = src[1];
             dst[2] = src[2];
             dst[3] = src[3];
+            // Record that the game set this register via the API, so the
+            // def-constant overlay in AccumulateDrawStats knows not to
+            // override it (and the jitter collision check below can use it).
+            _gameVsConstWritten[StartRegister + i] = true;
         }
 
-        // Phase 7 Session 3: record exactly which constant registers the game
-        // writes (our own jitter upload goes straight to _real, so it isn't
-        // recorded). Used to warn precisely if the game writes our jitter
-        // register, and to dump the high-register usage so a free one can be
-        // picked.
+        // Phase 7 Session 3: warn precisely if the game writes our jitter
+        // register (a collision means the patched shader's jitter read is
+        // clobbered). The written-register tracking lives in the shadow loop
+        // above now, so it's populated regardless of the jitter flag; this
+        // block only does the jitter-specific collision warning.
         if (Config::Instance()->Dx9TAA_VsJitter.value_or_default() && Vector4fCount > 0)
         {
-            const UINT first = StartRegister;
-            const UINT last = StartRegister + Vector4fCount; // exclusive
-            for (UINT i = first; i < last && i < 256; ++i)
-                _gameVsConstWritten[i] = true;
-
             const int jitterReg = Config::Instance()->Dx9TAA_VsJitterRegister.value_or_default();
             if (!_loggedJitterRegCollision && jitterReg >= 0 && jitterReg < 256 && _gameVsConstWritten[jitterReg])
             {

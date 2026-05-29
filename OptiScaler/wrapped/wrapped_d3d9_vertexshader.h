@@ -2,7 +2,10 @@
 
 #include <d3d9.h>
 #include <cstdint>
+#include <utility>
 #include <vector>
+
+#include "misc/Dxbc_VsPatcher.h"
 
 // Wrapper around IDirect3DVertexShader9 used by Phase 7 jitter injection.
 //
@@ -64,6 +67,12 @@ class __declspec(uuid("7B3F2A0C-1D4E-4B5F-8A6C-9E2F3B4D5E6F"))
     // for motion-vector generation.
     int MvpRegister() const                         { return _mvpRegister; }
     void SetMvpRegister(int reg)                    { _mvpRegister = reg; }
+    // Float constant defaults baked into the bytecode (`def cN, ...`). They
+    // bypass SetVertexShaderConstantF, so a matrix register fed from a def
+    // must be read from here, not the API constant shadow (DXVK gap). Used by
+    // the camera-VP capture and, later, per-object MV.
+    const std::vector<DxbcVsPatcher::FloatConstDef>& FloatDefs() const { return _floatDefs; }
+    void SetFloatDefs(std::vector<DxbcVsPatcher::FloatConstDef> defs)  { _floatDefs = std::move(defs); }
     // True only when the patched variant actually reads the jitter constant —
     // a plain disasm/asm round-trip (transform-skipped fallback) is patched
     // but NOT jittered, so the device must not upload to its const slot.
@@ -84,6 +93,7 @@ class __declspec(uuid("7B3F2A0C-1D4E-4B5F-8A6C-9E2F3B4D5E6F"))
     uint32_t _jitterConstSlot = 0;
     bool _jittered = false;
     int _mvpRegister = -1;
+    std::vector<DxbcVsPatcher::FloatConstDef> _floatDefs;
 
     std::vector<DWORD> _origBytecode;
     uint64_t _hash = 0;

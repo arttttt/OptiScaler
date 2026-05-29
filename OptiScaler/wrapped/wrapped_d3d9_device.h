@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "misc/Dxbc_VsPatcher.h"
+
 class IFeature_Dx9wDx11;
 class WrappedVertexShader9;
 
@@ -239,6 +241,7 @@ private:
     bool _frameCamVpValid = false;    // a candidate was captured this frame
     bool _camVpValid = false;         // _currentViewProj holds a real camera VP
     bool _loggedCamVp = false;
+    bool _loggedMatrixDef = false;    // log once when a def constant lands in a captured matrix
 
     // Phase 3: scene depth surface (largest one matching backbuffer dims).
     // AddRef'd while tracked, released on dtor / Reset / replacement.
@@ -299,6 +302,7 @@ private:
         std::vector<DWORD> bytecode;    // reassembled (round-trip) / patched (jitter)
         uint32_t jitterConstSlot = 0;   // which cN the patched shader reads jitter from
         int mvpRegister = -1;           // constant register of the view-projection matrix, or -1
+        std::vector<DxbcVsPatcher::FloatConstDef> floatDefs; // `def cN` floats baked in the bytecode
     };
     std::unordered_map<uint64_t, CachedVsResult> _vsProcessCache;
     int _vsRoundtripLogged = 0;         // cap process-verify log lines

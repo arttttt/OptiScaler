@@ -271,6 +271,43 @@ DxbcVsPatcher::RegisterUsage DxbcVsPatcher::AnalyzeRegisterUsage(const DWORD* co
     return usage;
 }
 
+std::vector<DxbcVsPatcher::FloatConstDef> DxbcVsPatcher::ExtractFloatDefs(const DWORD* code)
+{
+    std::vector<FloatConstDef> defs;
+    if (code == nullptr)
+        return defs;
+
+    const uint32_t* tokens = reinterpret_cast<const uint32_t*>(code);
+    dxvk::DxsoProgramInfo info;
+    if (!dxvk::DxsoDecodeHeader(tokens[0], info))
+        return defs;
+
+    dxvk::DxsoDecodeContext decoder(info);
+    dxvk::DxsoCodeIter iter(tokens + 1);
+
+    while (decoder.decodeInstruction(iter))
+    {
+        const auto& ctx = decoder.getInstructionContext();
+        // Float defs only: `def cN, x,y,z,w`. DefI/DefB write the integer /
+        // bool constant files, which never hold a transform matrix. For Def
+        // the decoder puts the const register in dst and the values in def.
+        if (ctx.instruction.opcode != dxvk::DxsoOpcode::Def)
+            continue;
+        if (ctx.dst.id.type != dxvk::DxsoRegisterType::Const)
+            continue;
+
+        FloatConstDef d;
+        d.reg = static_cast<int>(ctx.dst.id.num);
+        d.value[0] = ctx.def.float32[0];
+        d.value[1] = ctx.def.float32[1];
+        d.value[2] = ctx.def.float32[2];
+        d.value[3] = ctx.def.float32[3];
+        defs.push_back(d);
+    }
+
+    return defs;
+}
+
 namespace
 {
     bool IsAsmTokenChar(char c)

@@ -1,6 +1,7 @@
 #pragma once
 #include <d3d9.h>
 #include <string>
+#include <vector>
 
 // DXBC SM2/SM3 vertex-shader bytecode utilities built on the ported DXVK
 // dxso decoder. Phase 7a shipped Analyze (read-only oPos-write logging);
@@ -93,4 +94,17 @@ class DxbcVsPatcher
     // g_mWVP, etc. Returns the base register index, or -1 if none. Used to
     // capture the camera view-projection for motion vectors.
     static int FindViewProjRegister(const std::string& disasm);
+
+    struct FloatConstDef
+    {
+        int   reg;       // constant register index (cN)
+        float value[4];  // the def's x, y, z, w
+    };
+
+    // Extract `def cN, x, y, z, w` float constant definitions baked into the
+    // bytecode. DXVK compiles these to immediates, so they never pass through
+    // SetVertexShaderConstantF — a matrix register fed from a def would read
+    // stale/zero from the API constant shadow. Returns reg + xyzw per def
+    // (float defs only; DefI/DefB target the int/bool files, never a matrix).
+    static std::vector<FloatConstDef> ExtractFloatDefs(const DWORD* code);
 };

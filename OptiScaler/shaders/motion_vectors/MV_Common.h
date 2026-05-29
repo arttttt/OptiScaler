@@ -78,7 +78,12 @@ inline static ID3DBlob* MV_CompileShader(const char* shaderCode, const char* ent
                                entryPoint, target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
                                &shaderBlob, &errorBlob);
 
-    FreeLibrary(d3dcompilerDll);
+    // Do NOT FreeLibrary here. The returned ID3DBlob is a COM object whose
+    // vtable lives inside d3dcompiler_47.dll; unloading the DLL before the
+    // caller uses the blob (GetBufferPointer/GetBufferSize are virtual calls)
+    // leaves it dangling and crashes. d3dcompiler is a system DLL — leaving it
+    // resident for the process lifetime is fine (the same DLL is also used by
+    // the Phase 3 depth-copy compile).
 
     if (FAILED(hr))
     {

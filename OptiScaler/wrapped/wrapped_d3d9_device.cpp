@@ -1175,19 +1175,19 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3DDevice9Ex::Present(CONST RECT* pSource
                     float invCur[16] = {};
                     float prevVP[16] = {};
                     bool mvValid = false;
-                    // current = THIS frame's captured camera VP, previous = the
-                    // last finalized VP. The rotation that promotes _frameCamVp
-                    // into _currentViewProj runs *after* this Render, so
-                    // _currentViewProj is still the previous frame's here. Using
-                    // it directly avoids a one-frame MV lag (which smears during
-                    // motion and "catches up" when motion stops).
-                    if (_frameCamVpValid && _camVpValid)
+                    // current = _currentViewProj, previous = _prevViewProj.
+                    // Empirically this pairing ghosts far less than feeding
+                    // this-frame's freshly-captured VP as current — the depth
+                    // we resolve appears to pair with the previous finalized VP
+                    // (capture/depth timing), so the "obvious" no-lag pairing
+                    // actually doubled the ghosting. Kept as the better state.
+                    if (_camVpValid && _viewProjHasPrev)
                     {
                         D3DMATRIX inv;
-                        if (Mat4Inverse(&inv, _frameCamVp))
+                        if (Mat4Inverse(&inv, _currentViewProj))
                         {
                             memcpy(invCur, &inv.m[0][0], sizeof(invCur));
-                            memcpy(prevVP, &_currentViewProj.m[0][0], sizeof(prevVP));
+                            memcpy(prevVP, &_prevViewProj.m[0][0], sizeof(prevVP));
                             mvValid = true;
                         }
                     }

@@ -123,21 +123,15 @@ bool IFeature_Dx9wDx11::Init(IDirect3DDevice9* gameDevice, IDirect3DDevice9Ex* g
             LOG_WARN("Dx9wDx11: FSR2 working resources unavailable — round-trip fallback");
 
         // MV: Phase 4 motion-vector compute. Non-fatal — without it FSR2 uses
-        // the zero MV (static-camera-correct). Breadcrumbed so a crash here is
-        // pinpointed rather than inferred from a missing log line.
-        LOG_INFO("Dx9wDx11: [bc] constructing MV compute object...");
+        // the zero MV (static-camera-correct).
         _mv = std::make_unique<MotionVectors_Dx11>("Dx9wDx11_MV", _dx11Device);
-        LOG_INFO("Dx9wDx11: [bc] MV object constructed (IsInit={})", _mv->IsInit());
-        const bool mvBuf = _mv->CreateBufferResource(_dx11Device, _width, _height);
-        LOG_INFO("Dx9wDx11: [bc] MV CreateBufferResource returned {}", mvBuf);
-        if (!mvBuf)
+        if (!_mv->CreateBufferResource(_dx11Device, _width, _height))
         {
             LOG_WARN("Dx9wDx11: MV compute resource unavailable — FSR2 uses zero MV");
             _mv.reset();
         }
     }
 
-    LOG_INFO("Dx9wDx11: [bc] Init tail — setting _init=true");
     _init = true;
     LOG_INFO("Dx9wDx11 bridge initialised ({}x{}, fmt=0x{:X}, rtv={})", _width, _height,
              static_cast<uint32_t>(_gameFormat), _sharedOutRtv != nullptr ? "ok" : "none");
@@ -284,10 +278,6 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurfa
     if (!_init || gameBackbuffer == nullptr)
         return false;
 
-    const bool trace = _renderTraceFrames < 3;
-    if (trace)
-        LOG_INFO("Dx9wDx11: [bc] Render frame {} enter (mvValid={})", _renderTraceFrames, mvValid);
-
     // 1. DX9: backbuffer -> shared in.
     HRESULT hr = _gameDevice->StretchRect(gameBackbuffer, nullptr, _sharedInSurf9, nullptr, D3DTEXF_POINT);
     if (FAILED(hr))
@@ -295,8 +285,6 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurfa
         LOG_ERROR("Dx9wDx11: StretchRect(backbuf -> in) failed hr=0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
-    if (trace)
-        LOG_INFO("Dx9wDx11: [bc] color StretchRect ok");
 
     // 1b. DX9: scene depth -> shared depth (R32F same-format copy). Skipped
     // when no depth was identified this frame. Done before the sync so the
@@ -315,13 +303,9 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurfa
         }
     }
 
-    if (trace)
-        LOG_INFO("Dx9wDx11: [bc] depth handled, syncing GPU");
     // 2. Sync: drain DX9 pipeline so DX11 sees finished writes.
     if (!WaitGpuDx9())
         return false;
-    if (trace)
-        LOG_INFO("Dx9wDx11: [bc] GPU synced");
 
     // 3. DX11 work. Preferred path: run the FSR2 resolve (the visible DLAA
     // output). It reads the shared color/depth, writes its UAV, and copies
@@ -333,9 +317,6 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurfa
     // MV compute: shared depth + camera matrices -> R16G16F motion vectors.
     // Only when a camera VP is available; otherwise FSR2 gets the zero MV.
     ID3D11Texture2D* mvTex = nullptr;
-    if (trace)
-        LOG_INFO("Dx9wDx11: [bc] before MV (mvValid={}, _mv={}, depth={})", mvValid, _mv != nullptr,
-                 _sharedDepthTex11 != nullptr);
     if (mvValid && _mv != nullptr && _sharedDepthTex11 != nullptr && invViewProjCur != nullptr &&
         viewProjPrev != nullptr)
     {
@@ -355,14 +336,8 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurfa
         }
     }
 
-    if (trace)
-        LOG_INFO("Dx9wDx11: [bc] MV done (mvTex={}), dispatching FSR2", mvTex != nullptr);
-
     const bool fsr2Done =
         Config::Instance()->Dx9TAA_BridgeFsr2.value_or_default() && DispatchFsr2(jitterX, jitterY, mvTex);
-
-    if (trace)
-        LOG_INFO("Dx9wDx11: [bc] FSR2 dispatch done={}", fsr2Done);
 
     if (fsr2Done)
     {
@@ -391,10 +366,6 @@ bool IFeature_Dx9wDx11::Render(IDirect3DSurface9* gameBackbuffer, IDirect3DSurfa
         LOG_ERROR("Dx9wDx11: StretchRect(out -> backbuf) failed hr=0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
-
-    if (trace)
-        LOG_INFO("Dx9wDx11: [bc] output StretchRect ok — frame {} complete", _renderTraceFrames);
-    _renderTraceFrames++;
 
     if (!_loggedRoundtripOk)
     {

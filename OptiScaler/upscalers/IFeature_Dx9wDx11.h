@@ -120,7 +120,6 @@ class IFeature_Dx9wDx11
     // _fsr2Mv. Pimpl'd (forward-declared) so MV_Dx11.h doesn't leak here.
     std::unique_ptr<MotionVectors_Dx11> _mv;
     bool _loggedMv = false;
-    int _renderTraceFrames = 0; // breadcrumb the first few Render frames
 
     // DX9 sync: event query gets issued after StretchRect-in and we poll
     // GetData(D3DGETDATA_FLUSH) before DX11 reads. DX11 flush happens after
